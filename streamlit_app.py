@@ -479,7 +479,7 @@ st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 .stApp {{ background:{INK}; }}
-.block-container {{ padding-top: 1.6rem; max-width: 1400px; }}
+.block-container {{ padding-top: 3.2rem; max-width: 1400px; }}
 .kpi {{ background:{PANEL}; border:1px solid {LINE}; border-radius:10px; padding:14px 16px; height:100%; }}
 .kpi .l {{ color:{MUTED}; font:600 10px {MONO}; letter-spacing:.08em; }}
 .kpi .v {{ font:600 22px {MONO}; margin-top:6px; line-height:1.1; }}
@@ -519,20 +519,17 @@ def _pnl_style(col):
 
 
 # ---- header ----
-hcol1, hcol2 = st.columns([3, 2])
-hcol1.markdown(f'<div style="font:600 20px {MONO};letter-spacing:.12em">'
-               f'<span style="color:{BRASS}">BOOK</span>'
-               f'<span style="color:{TXT}">MONITOR</span></div>'
-               f'<div style="color:{MUTED};font:400 12px {FONT}">track record · trade stats · exposure</div>',
-               unsafe_allow_html=True)
+st.markdown(f'<div style="font:600 20px {MONO};letter-spacing:.12em">'
+            f'<span style="color:{BRASS}">BOOK</span>'
+            f'<span style="color:{TXT}">MONITOR</span></div>'
+            f'<div style="color:{MUTED};font:400 12px {FONT}">track record · trade stats · exposure</div>',
+            unsafe_allow_html=True)
 
-# ---- data source ----
-uploaded = hcol2.file_uploader("Track record workbook (.xlsx)", type=["xlsx"], label_visibility="collapsed")
-src = uploaded.getvalue() if uploaded is not None else (TRADES_FILE if os.path.exists(TRADES_FILE) else None)
+# ---- data source (bundled workbook only; no uploads) ----
+src = TRADES_FILE if os.path.exists(TRADES_FILE) else None
 
 if src is None:
-    st.info(f"Upload your workbook, or add **{TRADES_FILE}** to the app folder. "
-            "It needs a **Trades** sheet and (optionally) a **Daily PnL** sheet.")
+    st.error(f"Workbook **{TRADES_FILE}** not found in the app folder.")
     st.stop()
 
 try:
@@ -637,10 +634,8 @@ with left:
         tile(r1[2], "Profit factor", num(ts["profit_factor"]), UP)
         tile(r1[3], "Payoff", num(ts["payoff"]))
         r2 = st.columns(4)
-        tile(r2[0], "Avg win", money(ts["avg_win"]), UP)
-        tile(r2[1], "Avg loss", money(ts["avg_loss"]), DOWN)
-        tile(r2[2], "Expectancy", money(ts["expectancy"]), pnl_color(ts["expectancy"]))
-        tile(r2[3], "Avg hold", f"{ts['avg_hold']:.1f}d")
+        tile(r2[0], "Expectancy", money(ts["expectancy"]), pnl_color(ts["expectancy"]))
+        tile(r2[1], "Avg hold", f"{ts['avg_hold']:.1f}d")
     else:
         st.caption("No closed trades yet.")
 with right:
