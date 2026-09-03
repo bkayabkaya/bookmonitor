@@ -130,6 +130,10 @@ def load_trades(src):
     df["exit_date"] = pd.to_datetime(raw["Exit Date"], errors="coerce")
     df["symbol"] = raw["Symbol"].astype(str).str.strip()
     df["ib_ticker"] = raw["IB_TICKER"].astype(str).str.strip()
+    _inm = next((c for c in raw.columns if c.strip().lower() in
+                 ("instrument name", "instrument_name")), None)
+    df["instrument_name"] = (raw[_inm].astype(str).str.strip().replace({"nan": "", "None": ""})
+                             if _inm else "")
     df["quantity"] = _to_num(raw["Quantity"])
     df["entry_price"] = _to_num(raw["Entry Price"])
     df["exit_price"] = _to_num(raw["Exit Price"])
@@ -178,7 +182,10 @@ def group_trades(legs):
         rows.append({
             "trade_id": tid, "trade_type": g["trade_type"].iloc[0],
             "asset_class": acs[0] if len(acs) == 1 else "Mixed",
-            "instruments": ", ".join(g["symbol"].tolist()), "n_legs": len(g),
+            "instruments": ", ".join(g["symbol"].tolist()),
+            "instrument_names": ", ".join(dict.fromkeys(
+                n for n in g["instrument_name"].tolist() if n)),
+            "n_legs": len(g),
             "entry_date": g["entry_date"].min(),
             "exit_date": (g["exit_date"].max() if open_legs.empty else pd.NaT),
             "status": "Open" if not open_legs.empty else "Closed",
@@ -695,7 +702,8 @@ with left:
     tdf["net"] = tdf["realised_pnl"] - tdf["comm"]
     tshow = pd.DataFrame({
         "ID": tdf["trade_id"].astype("Int64").astype(str),
-        "Type": tdf["trade_type"], "Instruments": tdf["instruments"], "Status": tdf["status"],
+        "Type": tdf["trade_type"], "Instruments": tdf["instruments"],
+        "Instrument Name": tdf["instrument_names"], "Status": tdf["status"],
         "Hold": tdf["holding_days"].map(lambda v: f"{int(v)}d"),
         "Net P&L": tdf.apply(lambda r: "OPEN" if r["status"] == "Open" else money_signed(r["net"]), axis=1)})
     st.dataframe(tshow.style.map(_pnl_style("Net P&L"), subset=["Net P&L"]),
