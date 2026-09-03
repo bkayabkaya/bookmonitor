@@ -21,11 +21,16 @@ import streamlit as st
 TRADES_FILE  = os.environ.get("TRADES_FILE", "track_record.xlsx")  # bundled in the repo
 TRADES_SHEET = "Trades"
 DAILY_SHEET  = "Daily PnL"
+EXPOSURE_SHEET = "exposure"
 ANN = 252
 
 INK, PANEL, PANEL2, LINE = "#0E1116", "#161B22", "#1C232D", "#263140"
 TXT, MUTED, BRASS = "#E6EAF0", "#8A94A6", "#C8A25A"
 UP, DOWN, BLUE = "#3FB77E", "#E5606E", "#5B8DEF"
+EQ_AMBER  = "#F0A830"   # Equities — amber
+FUT_BLUE  = "#1868B7"   # Futures  — Greek blue
+ETF_RED   = "#8E2323"   # ETFs     — dark red
+CASH_GREY = "#3A4658"   # Cash     — undeployed
 MONO = "IBM Plex Mono, ui-monospace, monospace"
 FONT = "IBM Plex Sans, system-ui, sans-serif"
 PLOT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -112,6 +117,48 @@ def load_daily_pnl(src):
     prev = d["balance"].shift(1)
     d["ret"] = (d["pnl"] / prev).replace([np.inf, -np.inf], np.nan).fillna(0.0)
     return d
+
+
+def load_exposure(src):
+    xls = _excel(src)
+    name = next((s for s in xls.sheet_names
+                 if s.strip().lower() == EXPOSURE_SHEET.lower()), None)
+    if name is None:
+        return None
+    probe = pd.read_excel(xls, sheet_name=name, header=None, dtype=str)
+    hr = 0
+    for i in range(min(len(probe), 30)):
+        if "Date" in [str(v).strip() for v in probe.iloc[i].tolist()]:
+            hr = i
+            break
+    raw = pd.read_excel(xls, sheet_name=name, header=hr, dtype=str)
+    raw.columns = [str(c).strip() for c in raw.columns]
+    if "Date" not in raw.columns:
+        return None
+
+    def _col(*names):
+        for n in names:
+            for c in raw.columns:
+                if c.lower().strip() == n:
+                    return c
+        return None
+
+    d = pd.DataFrame()
+    d["date"] = pd.to_datetime(raw["Date"], errors="coerce")
+    wanted = {"equity":  ("equity_exposure",),
+              "cash":    ("cash_exposure",),
+              "futures": ("futures_exposure",),
+              "etf":     ("etf_exposure", "etfs_exposure")}
+    for key, names in wanted.items():
+        c = _col(*names)
+        d[key] = _to_num(raw[c]) if c else 0.0
+    d = d.dropna(subset=["date"]).sort_values("date").set_index("date")
+    if d.empty:
+        return None
+    # normalise each row to 100% (guards against rounding in the sheet)
+    frac = d[["equity", "cash", "futures", "etf"]].fillna(0.0)
+    tot = frac.sum(axis=1).replace(0, np.nan)
+    return frac.div(tot, axis=0).fillna(0.0)
 
 
 def load_trades(src):
@@ -434,6 +481,28 @@ def fig_drawdown(dd):
     return fig
 
 
+def fig_exposure_bars(expo, index=None):
+    if expo is None or expo.empty:
+        return go.Figure(layout=dict(**PLOT, height=190))
+    e = expo if index is None else expo.reindex(index)
+    e = e.dropna(how="all")
+    series = [("equity", "Equities", EQ_AMBER),
+              ("futures", "Futures", FUT_BLUE),
+              ("etf", "ETFs", ETF_RED),
+              ("cash", "Cash", CASH_GREY)]
+    fig = go.Figure()
+    for key, label, colr in series:
+        fig.add_trace(go.Bar(x=e.index, y=e[key], name=label,
+                      marker_color=colr, marker_line_width=0,
+                      hovertemplate="%{x|%Y-%m-%d}<br>" + label + " %{y:.0%}<extra></extra>"))
+    fig.update_layout(**PLOT, height=190, barmode="stack")
+    fig.update_layout(showlegend=True,
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                                  font=dict(family=MONO, size=10, color=MUTED)))
+    fig.update_yaxes(tickformat=".0%", range=[0, 1])
+    return fig
+
+
 def fig_daily(daily_net):
     fig = go.Figure(go.Bar(x=daily_net.index, y=daily_net.values,
                     marker_color=[UP if v >= 0 else DOWN for v in daily_net.values], marker_line_width=0))
@@ -549,6 +618,7 @@ trades = group_trades(legs)
 marks = marks_excel(legs)
 totals = totals_excel(trades, marks)
 daily = load_daily_pnl(src)
+expo = load_exposure(src)
 use_daily = daily is not None and len(daily) >= 2
 
 if use_daily:
@@ -603,6 +673,11 @@ with left:
     section("Account balance · daily MTM" if use_daily else "Realised P&L · by exit date")
     st.plotly_chart(fig_balance(daily, dd) if use_daily else fig_equity_excel(curves, dd, total_today),
                     use_container_width=True, config={"displayModeBar": False})
+    if expo is not None and not expo.empty:
+        section("Daily exposure · % of book")
+        _idx = daily["balance"].index if use_daily else curves.index
+        st.plotly_chart(fig_exposure_bars(expo, _idx),
+                        use_container_width=True, config={"displayModeBar": False})
     section("Drawdown")
     st.plotly_chart(fig_drawdown(dd), use_container_width=True, config={"displayModeBar": False})
 with right:
