@@ -27,10 +27,25 @@ ANN = 252
 INK, PANEL, PANEL2, LINE = "#0E1116", "#161B22", "#1C232D", "#263140"
 TXT, MUTED, BRASS = "#E6EAF0", "#8A94A6", "#C8A25A"
 UP, DOWN, BLUE = "#3FB77E", "#E5606E", "#5B8DEF"
-EQ_AMBER  = "#F0A830"   # Equities — amber
-FUT_BLUE  = "#1868B7"   # Futures  — Greek blue
-ETF_RED   = "#8E2323"   # ETFs     — dark red
-CASH_GREY = "#3A4658"   # Cash     — undeployed
+# Daily-exposure bar colours, keyed by the Trades sheet's Asset Class values.
+# Unmapped classes fall back to _EXPO_PALETTE (cycled).
+ASSET_COLORS = {
+    "Equities":   "#F0A830",  # amber
+    "ETFs":       "#8E2323",  # dark red
+    "Metals":     "#9AA6B2",  # steel / silver
+    "Currency":   "#1868B7",  # Greek blue
+    "Softs":      "#3FB77E",  # green
+    "Volatility": "#D64550",  # vivid red
+    "Sectoral":   "#7C5CBF",  # purple
+    "Index":      "#4F9DDF",  # light blue
+    "Cash":       "#3A4658",  # undeployed
+}
+_EXPO_PALETTE = ["#F0A830", "#1868B7", "#8E2323", "#3FB77E", "#7C5CBF",
+                 "#5B8DEF", "#9AA6B2", "#D64550", "#C8A25A", "#5FB3B3"]
+
+
+def _asset_color(name, i):
+    return ASSET_COLORS.get(name, _EXPO_PALETTE[i % len(_EXPO_PALETTE)])
 MONO = "IBM Plex Mono, ui-monospace, monospace"
 FONT = "IBM Plex Sans, system-ui, sans-serif"
 PLOT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -143,22 +158,32 @@ def load_exposure(src):
                     return c
         return None
 
+    # display name -> possible header spellings for its *_Exposure fraction column
+    wanted = {
+        "Equities":   ("equity_exposure", "equities_exposure"),
+        "Cash":       ("cash_exposure",),
+        "Currency":   ("currency_exposure",),
+        "Metals":     ("metals_exposure", "metal_exposure"),
+        "Softs":      ("softs_exposure", "soft_exposure"),
+        "Volatility": ("volatility_exposure", "vol_exposure"),
+        "Index":      ("index_exposure",),
+        "ETFs":       ("etf_exposure", "etfs_exposure"),
+    }
     d = pd.DataFrame()
     d["date"] = pd.to_datetime(raw["Date"], errors="coerce")
-    wanted = {"equity":  ("equity_exposure",),
-              "cash":    ("cash_exposure",),
-              "futures": ("futures_exposure",),
-              "etf":     ("etf_exposure", "etfs_exposure")}
-    for key, names in wanted.items():
+    for disp, names in wanted.items():
         c = _col(*names)
-        d[key] = _to_num(raw[c]) if c else 0.0
+        if c is not None:
+            d[disp] = _to_num(raw[c])
     d = d.dropna(subset=["date"]).sort_values("date").set_index("date")
-    if d.empty:
+    d.index = d.index.normalize()
+    if d.empty or d.shape[1] == 0:
         return None
     # normalise each row to 100% (guards against rounding in the sheet)
-    frac = d[["equity", "cash", "futures", "etf"]].fillna(0.0)
+    frac = d.fillna(0.0)
     tot = frac.sum(axis=1).replace(0, np.nan)
-    return frac.div(tot, axis=0).fillna(0.0)
+    norm = frac.div(tot, axis=0).fillna(0.0)
+    return norm.loc[:, (norm != 0).any(axis=0)]  # drop never-used categories
 
 
 def load_trades(src):
@@ -481,21 +506,20 @@ def fig_drawdown(dd):
     return fig
 
 
-def fig_exposure_bars(expo, index=None):
-    if expo is None or expo.empty:
-        return go.Figure(layout=dict(**PLOT, height=190))
-    e = expo if index is None else expo.reindex(index)
+def fig_exposure_bars(comp, index=None):
+    if comp is None or comp.empty:
+        return go.Figure(layout=dict(**PLOT, height=210))
+    e = comp if index is None else comp.reindex(pd.DatetimeIndex(index).normalize())
     e = e.dropna(how="all")
-    series = [("equity", "Equities", EQ_AMBER),
-              ("futures", "Futures", FUT_BLUE),
-              ("etf", "ETFs", ETF_RED),
-              ("cash", "Cash", CASH_GREY)]
+    if e.empty:
+        return go.Figure(layout=dict(**PLOT, height=210))
+    order = e.mean().sort_values(ascending=False).index.tolist()  # biggest share stacks first
     fig = go.Figure()
-    for key, label, colr in series:
-        fig.add_trace(go.Bar(x=e.index, y=e[key], name=label,
-                      marker_color=colr, marker_line_width=0,
-                      hovertemplate="%{x|%Y-%m-%d}<br>" + label + " %{y:.0%}<extra></extra>"))
-    fig.update_layout(**PLOT, height=190, barmode="stack")
+    for i, col in enumerate(order):
+        fig.add_trace(go.Bar(x=e.index, y=e[col], name=col,
+                      marker_color=_asset_color(col, i), marker_line_width=0,
+                      hovertemplate="%{x|%Y-%m-%d}<br>" + str(col) + " %{y:.0%}<extra></extra>"))
+    fig.update_layout(**PLOT, height=210, barmode="stack")
     fig.update_layout(showlegend=True,
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
                                   font=dict(family=MONO, size=10, color=MUTED)))
@@ -674,7 +698,7 @@ with left:
     st.plotly_chart(fig_balance(daily, dd) if use_daily else fig_equity_excel(curves, dd, total_today),
                     use_container_width=True, config={"displayModeBar": False})
     if expo is not None and not expo.empty:
-        section("Daily exposure · % of book")
+        section("Daily exposure · % of book by asset class")
         _idx = daily["balance"].index if use_daily else curves.index
         st.plotly_chart(fig_exposure_bars(expo, _idx),
                         use_container_width=True, config={"displayModeBar": False})
