@@ -30,22 +30,26 @@ UP, DOWN, BLUE = "#3FB77E", "#E5606E", "#5B8DEF"
 # Daily-exposure bar colours, keyed by the Trades sheet's Asset Class values.
 # Unmapped classes fall back to _EXPO_PALETTE (cycled).
 ASSET_COLORS = {
-    "Equities":   "#F0A830",  # amber
-    "ETFs":       "#8E2323",  # dark red
-    "Metals":     "#9AA6B2",  # steel / silver
-    "Currency":   "#1868B7",  # Greek blue
-    "Softs":      "#3FB77E",  # green
-    "Volatility": "#D64550",  # vivid red
-    "Sectoral":   "#7C5CBF",  # purple
-    "Index":      "#4F9DDF",  # light blue
-    "Cash":       "#3A4658",  # undeployed
+    "Equities":   "#F2C14E",  # pastel amber
+    "ETFs":       "#C97BA0",  # pastel dark pink (mauve)
+    "Metals":     "#C9B79C",  # pastel taupe / warm grey
+    "Currency":   "#7FB2E8",  # pastel blue
+    "Softs":      "#9BD08D",  # pastel green
+    "Volatility": "#EF9A9A",  # pastel red / salmon
+    "Sectoral":   "#B49BDD",  # pastel purple
+    "Index":      "#6FD1C4",  # pastel teal
+    "Cash":       "#AEB6C2",  # pastel slate (undeployed)
 }
-_EXPO_PALETTE = ["#F0A830", "#1868B7", "#8E2323", "#3FB77E", "#7C5CBF",
-                 "#5B8DEF", "#9AA6B2", "#D64550", "#C8A25A", "#5FB3B3"]
+_EXPO_PALETTE = ["#F2C14E", "#7FB2E8", "#C97BA0", "#9BD08D", "#B49BDD",
+                 "#6FD1C4", "#C9B79C", "#EF9A9A", "#E0B0D5", "#88C0C8"]
 
 
 def _asset_color(name, i):
     return ASSET_COLORS.get(name, _EXPO_PALETTE[i % len(_EXPO_PALETTE)])
+
+
+# Hide Sat/Sun on any date x-axis so trading days sit flush against each other.
+WEEKEND_BREAK = [dict(bounds=["sat", "mon"])]
 MONO = "IBM Plex Mono, ui-monospace, monospace"
 FONT = "IBM Plex Sans, system-ui, sans-serif"
 PLOT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -481,6 +485,7 @@ def fig_balance(daily, dd):
         fig.add_trace(go.Scatter(x=[m], y=[bal.loc[m]], mode="markers", showlegend=False,
                       marker=dict(color=DOWN, size=8, symbol="triangle-down")))
     fig.update_layout(**PLOT, height=320); fig.update_yaxes(tickprefix="$", tickformat=",.0f")
+    fig.update_xaxes(rangebreaks=WEEKEND_BREAK)
     return fig
 
 
@@ -495,6 +500,7 @@ def fig_equity_excel(curves, dd, total_today):
         fig.add_trace(go.Scatter(x=[d], y=[total_today], mode="markers",
                       marker=dict(color=BLUE, size=9), showlegend=False))
     fig.update_layout(**PLOT, height=320); fig.update_yaxes(tickprefix="$", tickformat=",.0f")
+    fig.update_xaxes(rangebreaks=WEEKEND_BREAK)
     return fig
 
 
@@ -503,6 +509,7 @@ def fig_drawdown(dd):
     fig = go.Figure(go.Scatter(x=s.index, y=s.values, line=dict(color=DOWN, width=1),
                     fill="tozeroy", fillcolor="rgba(229,96,110,0.18)"))
     fig.update_layout(**PLOT, height=160); fig.update_yaxes(tickprefix="$", tickformat=",.0f")
+    fig.update_xaxes(rangebreaks=WEEKEND_BREAK)
     return fig
 
 
@@ -524,6 +531,7 @@ def fig_exposure_bars(comp, index=None):
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
                                   font=dict(family=MONO, size=10, color=MUTED)))
     fig.update_yaxes(tickformat=".0%", range=[0, 1])
+    fig.update_xaxes(rangebreaks=WEEKEND_BREAK)
     return fig
 
 
@@ -531,6 +539,7 @@ def fig_daily(daily_net):
     fig = go.Figure(go.Bar(x=daily_net.index, y=daily_net.values,
                     marker_color=[UP if v >= 0 else DOWN for v in daily_net.values], marker_line_width=0))
     fig.update_layout(**PLOT, height=230); fig.update_yaxes(tickprefix="$", tickformat=",.0f")
+    fig.update_xaxes(rangebreaks=WEEKEND_BREAK)
     return fig
 
 
