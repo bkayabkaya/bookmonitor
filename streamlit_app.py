@@ -713,12 +713,10 @@ with right:
     tile(t[0], "Best day", money(perf["best_day"]), UP)
     tile(t[1], "Worst day", money(perf["worst_day"]), DOWN)
     tile(t[2], "Daily σ", pct(perf["daily_vol"]) if use_daily else money(perf["daily_vol"]))
-    section("By strategy")
-    st.plotly_chart(fig_strategy(bystrat), use_container_width=True, config={"displayModeBar": False})
 
 st.write("")
 
-# ---- risk & performance + trade statistics ----
+# ---- risk grid ----
 section(f"Risk & performance · {'daily returns' if use_daily else 'realised'} basis")
 g = st.columns(9)
 tile(g[0], "Sharpe", num(perf["sharpe"]))
