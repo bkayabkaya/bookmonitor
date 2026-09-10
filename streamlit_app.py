@@ -38,10 +38,11 @@ ASSET_COLORS = {
     "Volatility": "#D64550",  # vivid red
     "Sectoral":   "#7C5CBF",  # purple
     "Index":      "#6E7681",  # dark gray
+    "Rates":      "#2AA9A0",  # teal
     "Cash":       "#1E5631",  # dark green
 }
 _EXPO_PALETTE = ["#F0A830", "#1868B7", "#8E2323", "#4C8C63", "#7C5CBF",
-                 "#6E7681", "#8B6914", "#D64550", "#C8A25A", "#5FB3B3"]
+                 "#6E7681", "#8B6914", "#D64550", "#2AA9A0", "#C8A25A", "#5FB3B3"]
 
 
 def _asset_color(name, i):
@@ -169,6 +170,7 @@ def load_exposure(src):
         "Softs":      ("softs_exposure", "soft_exposure"),
         "Volatility": ("volatility_exposure", "vol_exposure"),
         "Index":      ("index_exposure",),
+        "Rates":      ("rates_exposure", "rate_exposure"),
         "ETFs":       ("etf_exposure", "etfs_exposure"),
     }
     d = pd.DataFrame()
@@ -179,6 +181,7 @@ def load_exposure(src):
             d[disp] = _to_num(raw[c])
     d = d.dropna(subset=["date"]).sort_values("date").set_index("date")
     d.index = d.index.normalize()
+    d = d[~d.index.duplicated(keep="last")]
     if d.empty or d.shape[1] == 0:
         return None
     # normalise each row to 100% (guards against rounding in the sheet)
@@ -511,7 +514,11 @@ def fig_drawdown(dd):
 def fig_exposure_bars(comp, index=None):
     if comp is None or comp.empty:
         return go.Figure(layout=dict(**PLOT, height=210))
-    e = comp if index is None else comp.reindex(pd.DatetimeIndex(index).normalize())
+    e = comp[~comp.index.duplicated(keep="last")].sort_index()
+    if index is not None:
+        target = pd.DatetimeIndex(index).normalize()
+        target = target[~target.duplicated(keep="last")]
+        e = e.reindex(target)
     e = e.dropna(how="all")
     if e.empty:
         return go.Figure(layout=dict(**PLOT, height=210))
