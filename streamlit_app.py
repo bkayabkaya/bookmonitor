@@ -511,7 +511,33 @@ def fig_drawdown(dd):
     return fig
 
 
-def fig_exposure_bars(comp, index=None):
+def _positions_by_day_class(legs, dates):
+    """Map (day, asset_class) -> '<br>Long | Name<br>Short | Name' for legs held that day."""
+    if legs is None or len(legs) == 0 or dates is None or len(dates) == 0:
+        return {}
+    dts = pd.DatetimeIndex(dates).normalize()
+    last_day = dts.max()
+    out = {}
+    for _, leg in legs.iterrows():
+        start = leg["entry_date"]
+        if pd.isna(start):
+            continue
+        start = pd.Timestamp(start).normalize()
+        end = (pd.Timestamp(leg["exit_date"]).normalize()
+               if (not leg["is_open"] and pd.notna(leg["exit_date"])) else last_day)
+        ac = leg["asset_class"]
+        name = str(leg["instrument_name"]).strip()
+        if not name or name.lower() in ("nan", "none"):
+            name = str(leg["symbol"]).strip()
+        label = f"{leg['side']} | {name}"
+        for dtv in dts[(dts >= start) & (dts <= end)]:
+            lst = out.setdefault((dtv, ac), [])
+            if label not in lst:
+                lst.append(label)
+    return {k: "<br>" + "<br>".join(v) for k, v in out.items()}
+
+
+def fig_exposure_bars(comp, index=None, legs=None):
     if comp is None or comp.empty:
         return go.Figure(layout=dict(**PLOT, height=210))
     e = comp[~comp.index.duplicated(keep="last")].sort_index()
@@ -522,12 +548,15 @@ def fig_exposure_bars(comp, index=None):
     e = e.dropna(how="all")
     if e.empty:
         return go.Figure(layout=dict(**PLOT, height=210))
+    posmap = _positions_by_day_class(legs, e.index)
     order = e.mean().sort_values(ascending=False).index.tolist()  # biggest share stacks first
     fig = go.Figure()
     for i, col in enumerate(order):
-        fig.add_trace(go.Bar(x=e.index, y=e[col], name=col,
+        cust = [[posmap.get((pd.Timestamp(dtv).normalize(), col), "")] for dtv in e.index]
+        fig.add_trace(go.Bar(x=e.index, y=e[col], name=col, customdata=cust,
                       marker_color=_asset_color(col, i), marker_line_width=0,
-                      hovertemplate="%{x|%Y-%m-%d}<br>" + str(col) + " %{y:.0%}<extra></extra>"))
+                      hovertemplate="%{x|%Y-%m-%d}<br>" + str(col)
+                                    + "<br>%{y:.0%}%{customdata[0]}<extra></extra>"))
     fig.update_layout(**PLOT, height=210, barmode="stack")
     fig.update_layout(showlegend=True,
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
@@ -709,7 +738,7 @@ with left:
     if expo is not None and not expo.empty:
         section("Daily exposure · % of book by asset class")
         _idx = daily["balance"].index if use_daily else curves.index
-        st.plotly_chart(fig_exposure_bars(expo, _idx),
+        st.plotly_chart(fig_exposure_bars(expo, _idx, legs),
                         use_container_width=True, config={"displayModeBar": False})
     section("Drawdown")
     st.plotly_chart(fig_drawdown(dd), use_container_width=True, config={"displayModeBar": False})
