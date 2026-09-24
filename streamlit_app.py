@@ -512,19 +512,20 @@ def fig_drawdown(dd):
 
 
 def _positions_by_day_class(legs, dates):
-    """Map (day, asset_class) -> '<br>Long | Name<br>Short | Name' for legs held that day."""
+    """Map (day, asset_class) -> '<br>Long | Name<br>Short | Name' for OPEN legs held that day."""
     if legs is None or len(legs) == 0 or dates is None or len(dates) == 0:
         return {}
     dts = pd.DatetimeIndex(dates).normalize()
     last_day = dts.max()
     out = {}
     for _, leg in legs.iterrows():
+        if not leg["is_open"]:          # only positions whose Exit Price is "OPEN"
+            continue
         start = leg["entry_date"]
         if pd.isna(start):
             continue
         start = pd.Timestamp(start).normalize()
-        end = (pd.Timestamp(leg["exit_date"]).normalize()
-               if (not leg["is_open"] and pd.notna(leg["exit_date"])) else last_day)
+        end = last_day                  # an open leg runs through the latest day on the axis
         ac = leg["asset_class"]
         name = str(leg["instrument_name"]).strip()
         if not name or name.lower() in ("nan", "none"):
