@@ -39,10 +39,11 @@ ASSET_COLORS = {
     "Sectoral":   "#7C5CBF",  # purple
     "Index":      "#6E7681",  # dark gray
     "Rates":      "#2AA9A0",  # teal
+    "Energy":     "#F2EFE9",  # off white
     "Cash":       "#1E5631",  # dark green
 }
 _EXPO_PALETTE = ["#F0A830", "#1868B7", "#8E2323", "#4C8C63", "#7C5CBF",
-                 "#6E7681", "#8B6914", "#D64550", "#2AA9A0", "#C8A25A", "#5FB3B3"]
+                 "#6E7681", "#8B6914", "#D64550", "#2AA9A0", "#F2EFE9", "#C8A25A", "#5FB3B3"]
 
 
 def _asset_color(name, i):
@@ -171,6 +172,7 @@ def load_exposure(src):
         "Volatility": ("volatility_exposure", "vol_exposure"),
         "Index":      ("index_exposure",),
         "Rates":      ("rates_exposure", "rate_exposure"),
+        "Energy":     ("energy_exposure",),
         "ETFs":       ("etf_exposure", "etfs_exposure"),
     }
     d = pd.DataFrame()
