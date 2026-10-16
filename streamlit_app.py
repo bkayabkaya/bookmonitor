@@ -769,13 +769,20 @@ else:
 st.write("")
 
 # ---- monthly returns table ----
+section("Monthly returns · compounded daily returns")
 if not monthly.empty:
-    section("Monthly returns · compounded daily returns")
     _mstyle = (monthly.style
                .format(lambda v: "—" if pd.isna(v) else f"{v*100:+,.2f}%")
                .map(lambda v: "" if pd.isna(v) else (f"color:{UP}" if v >= 0 else f"color:{DOWN}")))
     st.dataframe(_mstyle, use_container_width=True)
-    st.write("")
+elif not os.path.exists(CSV_PATH):
+    st.caption(f"Daily-returns CSV not found at `{CSV_PATH}`. "
+               "Point CSV_PATH (env var or near the top of the script) at the file "
+               "with `date` and `daily_return` columns.")
+else:
+    st.caption(f"Loaded `{CSV_PATH}` but found no usable rows — expected a `date` column "
+               "and a `daily_return` column.")
+st.write("")
 
 # ---- equity + daily ----
 left, right = st.columns([2.1, 1])
