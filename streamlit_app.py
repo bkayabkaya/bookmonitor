@@ -23,7 +23,9 @@ TRADES_SHEET = "Trades"
 DAILY_SHEET  = "Daily PnL"
 EXPOSURE_SHEET = "exposure"
 # Daily-returns CSV feeding the monthly returns table (columns: date, daily_return).
-CSV_PATH = os.environ.get("CSV_PATH", "/Users/bariskaya/Desktop/_TRADING/str_II_dailyreturns_fullhistory.csv")
+# Bundled in the served folder next to streamlit_app.py — a relative path so it
+# resolves both locally and on Streamlit Community Cloud (which runs from the repo).
+CSV_PATH = os.environ.get("CSV_PATH", "str_II_dailyreturns_fullhistory.csv")
 MONTHS_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 ANN = 252
