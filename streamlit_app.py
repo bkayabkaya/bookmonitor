@@ -22,6 +22,10 @@ TRADES_FILE  = os.environ.get("TRADES_FILE", "track_record.xlsx")  # bundled in 
 TRADES_SHEET = "Trades"
 DAILY_SHEET  = "Daily PnL"
 EXPOSURE_SHEET = "exposure"
+# Daily-returns CSV feeding the monthly returns table (columns: date, daily_return).
+CSV_PATH = os.environ.get("CSV_PATH", "/Users/bariskaya/Desktop/_TRADING/str_II_dailyreturns_fullhistory.csv")
+MONTHS_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 ANN = 252
 
 INK, PANEL, PANEL2, LINE = "#0E1116", "#161B22", "#1C232D", "#263140"
@@ -191,6 +195,39 @@ def load_exposure(src):
     tot = frac.sum(axis=1).replace(0, np.nan)
     norm = frac.div(tot, axis=0).fillna(0.0)
     return norm.loc[:, (norm != 0).any(axis=0)]  # drop never-used categories
+
+
+def load_daily_returns(path):
+    """Read the daily-returns CSV (columns: date, daily_return). Returns a
+    date-indexed Series of fractional daily returns, or None if unavailable."""
+    if not path or not os.path.exists(path):
+        return None
+    raw = pd.read_csv(path, dtype=str)
+    raw.columns = [str(c).strip() for c in raw.columns]
+    dcol = next((c for c in raw.columns if c.lower() == "date"), None)
+    rcol = next((c for c in raw.columns if c.lower() in ("daily_return", "daily return", "return")), None)
+    if dcol is None or rcol is None:
+        return None
+    s = pd.DataFrame({"date": pd.to_datetime(raw[dcol], errors="coerce"),
+                      "ret": _to_num(raw[rcol])})
+    s = s.dropna(subset=["date"]).sort_values("date").set_index("date")["ret"].fillna(0.0)
+    s.index = s.index.normalize()
+    s = s[~s.index.duplicated(keep="last")]
+    return s if len(s) else None
+
+
+def monthly_returns_table(rets):
+    """Compound daily returns into a Year x Month table (+ a 'Year' total column),
+    all as fractions. Months not yet reached in the data are left as NaN."""
+    if rets is None or rets.empty:
+        return pd.DataFrame()
+    g = (1.0 + rets).groupby([rets.index.year, rets.index.month]).prod() - 1.0
+    g.index.names = ["year", "month"]
+    wide = g.unstack("month").reindex(columns=range(1, 13))
+    wide.columns = MONTHS_ABBR
+    yearly = (1.0 + rets).groupby(rets.index.year).prod() - 1.0
+    wide["Year"] = yearly
+    return wide.sort_index()
 
 
 def load_trades(src):
@@ -682,6 +719,7 @@ marks = marks_excel(legs)
 totals = totals_excel(trades, marks)
 daily = load_daily_pnl(src)
 expo = load_exposure(src)
+monthly = monthly_returns_table(load_daily_returns(CSV_PATH))
 use_daily = daily is not None and len(daily) >= 2
 
 if use_daily:
@@ -729,6 +767,15 @@ else:
     kpi(c[3], "Open Trades", str(totals["n_open"]), f"{ts.get('n_closed', 0)} closed", BLUE)
 
 st.write("")
+
+# ---- monthly returns table ----
+if not monthly.empty:
+    section("Monthly returns · compounded daily returns")
+    _mstyle = (monthly.style
+               .format(lambda v: "—" if pd.isna(v) else f"{v*100:+,.2f}%")
+               .map(lambda v: "" if pd.isna(v) else (f"color:{UP}" if v >= 0 else f"color:{DOWN}")))
+    st.dataframe(_mstyle, use_container_width=True)
+    st.write("")
 
 # ---- equity + daily ----
 left, right = st.columns([2.1, 1])
