@@ -678,17 +678,20 @@ def fig_exposure_bars(comp, index=None, legs=None, height=360):
     last = len(e.index) - 1
     fig = go.Figure()
     for i, c in enumerate(order):
+        # Real values (zeros included) keep the stack at a true 100% — NaN would
+        # leave gaps. 0%-height segments simply have no area to hover, so only
+        # classes > 0% ever appear in the per-segment tooltip.
         cd = [""] * len(e.index)
         if last >= 0 and c in posmap:
             cd[last] = posmap[c]
         fig.add_trace(go.Bar(
-            x=e.index, y=e[c].where(e[c] > 0), name=c, customdata=cd,
+            x=e.index, y=e[c], name=c, customdata=cd,
             marker=dict(color=_asset_color(c, i), line=dict(color="rgba(44,44,44,0.55)", width=0.6)),
             hovertemplate=f"{c}: %{{y:.0%}}%{{customdata}}<extra></extra>"))
     fig.update_layout(
         height=height, barmode="stack", bargap=0, paper_bgcolor=PANEL, plot_bgcolor=PANEL,
         font=dict(family=FONT, color=FT_COLORS["text"], size=12),
-        margin=dict(l=56, r=24, t=56, b=40), hovermode="x unified",
+        margin=dict(l=56, r=24, t=56, b=40), hovermode="closest",
         hoverlabel=dict(bgcolor="white", bordercolor=LINE, font=dict(family=MONO, size=11)),
         legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="left", x=0,
                     font=dict(size=12), bgcolor="rgba(0,0,0,0)", traceorder="normal"))
