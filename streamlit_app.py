@@ -868,6 +868,42 @@ def asset_table_df(byac, base=None):
         "Win%": byac["win_rate"].map(lambda v: pct(v) if pd.notna(v) else "—")})
 
 
+def fig_table(df, left_cols=(), color_cols=(), side_col=None, status_col=None):
+    """Render a display DataFrame as an FT-cream Plotly table: PANEL2 header,
+    PANEL cells, +/- coloured P&L columns, Long/Short + Open accents. Theme-proof
+    (its colours don't depend on Streamlit's dataframe theming)."""
+    cols = list(df.columns)
+    n = len(df)
+    header_vals = [f"<b>{str(c).upper()}</b>" for c in cols]
+    cell_vals, cell_colors, aligns = [], [], []
+    for c in cols:
+        vals = ["" if pd.isna(v) else str(v) for v in df[c].tolist()]
+        colors = []
+        for v in vals:
+            col = TXT
+            if c in color_cols:
+                if v.startswith("-"):
+                    col = DOWN
+                elif v.startswith("+"):
+                    col = UP
+            if side_col and c == side_col:
+                col = UP if v == "Long" else (DOWN if v == "Short" else TXT)
+            if status_col and c == status_col:
+                col = BRASS if v == "Open" else col
+            colors.append(col)
+        cell_vals.append(vals)
+        cell_colors.append(colors)
+        aligns.append("left" if c in left_cols else "right")
+    fig = go.Figure(data=[go.Table(
+        header=dict(values=header_vals, fill_color=PANEL2, line_color=LINE, align=aligns,
+                    font=dict(color=MUTED, family=MONO, size=11), height=28),
+        cells=dict(values=cell_vals, fill_color=PANEL, line_color=LINE, align=aligns,
+                   font=dict(color=cell_colors, family=MONO, size=12), height=26))])
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      margin=dict(l=2, r=2, t=2, b=2), height=max(80, 32 + 27 * n))
+    return fig
+
+
 # ===========================================================================
 #  STREAMLIT UI
 # ===========================================================================
@@ -905,36 +941,6 @@ def stat_row(tiles):
         f'<div class="v" style="color:{col}">{val}</div></div>'
         for lab, val, col in tiles)
     st.markdown(f'<div class="strow">{cells}</div>', unsafe_allow_html=True)
-
-
-def _style_table(df, color_cols=None, side_col=None, status_col=None):
-    """Return a pandas Styler: +/- coloured P&L columns, Long/Short + Open accents."""
-    color_cols = color_cols or []
-
-    def _signcol(v):
-        v = str(v)
-        if v.startswith("-"):
-            return f"color:{DOWN}"
-        if v.startswith("+"):
-            return f"color:{UP}"
-        return ""
-
-    def _side(v):
-        return f"color:{UP}" if v == "Long" else (f"color:{DOWN}" if v == "Short" else "")
-
-    def _status(v):
-        return f"color:{BRASS};font-weight:600" if v == "Open" else ""
-
-    sty = df.style
-    for c in color_cols:
-        if c in df.columns:
-            sty = sty.map(_signcol, subset=[c])
-    if side_col and side_col in df.columns:
-        sty = sty.map(_side, subset=[side_col])
-    if status_col and status_col in df.columns:
-        sty = sty.map(_status, subset=[status_col])
-    sty = sty.set_properties(**{"font-family": MONO, "font-size": "12px"})
-    return sty
 
 
 _CHART = {"displayModeBar": False}
@@ -1046,7 +1052,7 @@ _monthly_fig = fig_monthly_returns(load_monthly_returns())
 if _monthly_fig is not None:
     with st.container(border=True):
         section("Monthly returns  ·  %")
-        st.plotly_chart(_monthly_fig, use_container_width=True, config=_CHART)
+        st.plotly_chart(_monthly_fig, use_container_width=True, theme=None, config=_CHART)
 
 # ---- row: curve/exposure/drawdown  +  daily returns/strategy/drivers ----
 curve_title = ("Cumulative return  ·  %" if use_daily
@@ -1057,35 +1063,35 @@ left, right = st.columns([2.2, 1])
 with left:
     with st.container(border=True):
         section(curve_title)
-        st.plotly_chart(equity_fig, use_container_width=True, config=_CHART)
+        st.plotly_chart(equity_fig, use_container_width=True, theme=None, config=_CHART)
         if expo is not None and not expo.empty:
             section("Exposure by Asset Class")
-            st.plotly_chart(fig_exposure_bars(expo, equity_index), use_container_width=True, config=_CHART)
+            st.plotly_chart(fig_exposure_bars(expo, equity_index), use_container_width=True, theme=None, config=_CHART)
         st.markdown(f'<div class="ddlabel">{dd_label}</div>', unsafe_allow_html=True)
-        st.plotly_chart(dd_fig, use_container_width=True, config=_CHART)
+        st.plotly_chart(dd_fig, use_container_width=True, theme=None, config=_CHART)
 with right:
     with st.container(border=True):
         if daily_ret_fig is not None:
             section("Daily returns  ·  %")
-            st.plotly_chart(daily_ret_fig, use_container_width=True, config=_CHART)
+            st.plotly_chart(daily_ret_fig, use_container_width=True, theme=None, config=_CHART)
         section("By strategy  ·  %")
-        st.plotly_chart(fig_strategy(bystrat, base_cap), use_container_width=True, config=_CHART)
+        st.plotly_chart(fig_strategy(bystrat, base_cap), use_container_width=True, theme=None, config=_CHART)
         _mdr = month_trade_drivers(trades, marks)
         if _mdr is not None and not _mdr.empty:
             _mlabel = pd.Timestamp.today().strftime("%B")
             section(f"What drove {_mlabel}'s P&L  ·  trades entered this month")
-            st.plotly_chart(fig_trade_drivers(_mdr, base_cap), use_container_width=True, config=_CHART)
+            st.plotly_chart(fig_trade_drivers(_mdr, base_cap), use_container_width=True, theme=None, config=_CHART)
 
 # ---- row: asset class / exposure / breakdown ----
 c1, c2, c3 = st.columns([1, 1, 1.2])
 with c1:
     with st.container(border=True):
         section("Net P&L by asset class  ·  %  |  Long % vs Short %")
-        st.plotly_chart(fig_asset(byac, base_cap), use_container_width=True, config=_CHART)
+        st.plotly_chart(fig_asset(byac, base_cap), use_container_width=True, theme=None, config=_CHART)
 with c2:
     with st.container(border=True):
         section("Open exposure by instrument  ·  % of balance")
-        st.plotly_chart(fig_exposure(exposure(marks), base_cap), use_container_width=True, config=_CHART)
+        st.plotly_chart(fig_exposure(exposure(marks), base_cap), use_container_width=True, theme=None, config=_CHART)
 with c3:
     with st.container(border=True):
         section("Asset-class breakdown  ·  %")
@@ -1093,8 +1099,9 @@ with c3:
         if _adf.empty:
             st.caption("No asset-class data.")
         else:
-            st.dataframe(_style_table(_adf, color_cols=["Realized", "Unrealized", "Net"]),
-                         use_container_width=True, hide_index=True)
+            st.plotly_chart(fig_table(_adf, left_cols=["Asset Class"],
+                                      color_cols=["Realized", "Unrealized", "Net"]),
+                            use_container_width=True, theme=None, config=_CHART)
 
 # ---- row: tables ----
 t1, t2 = st.columns([1.4, 1])
@@ -1102,8 +1109,9 @@ with t1:
     with st.container(border=True):
         section("Trades")
         _tdf = trades_table_df(trades, base_cap)
-        st.dataframe(_style_table(_tdf, color_cols=["Net P&L"], status_col="Status"),
-                     use_container_width=True, hide_index=True)
+        st.plotly_chart(fig_table(_tdf, left_cols=["Type", "Instruments", "Status"],
+                                  color_cols=["Net P&L"], status_col="Status"),
+                        use_container_width=True, theme=None, config=_CHART)
 with t2:
     with st.container(border=True):
         section("Open positions")
@@ -1111,5 +1119,6 @@ with t2:
         if _odf.empty:
             st.caption("No open positions.")
         else:
-            st.dataframe(_style_table(_odf, color_cols=["Unreal P&L"], side_col="Side"),
-                         use_container_width=True, hide_index=True)
+            st.plotly_chart(fig_table(_odf, left_cols=["Instrument", "Side"],
+                                      color_cols=["Unreal P&L"], side_col="Side"),
+                            use_container_width=True, theme=None, config=_CHART)
