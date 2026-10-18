@@ -650,11 +650,16 @@ def fig_exposure_bars(comp, index=None, height=360):
     e = e.loc[:, (e != 0).any(axis=0)]
     if e.empty:
         return go.Figure(layout=dict(**PLOT, height=height))
+    # Re-normalise each day's row to sum to 100% so the stacked bars always fill
+    # the full vertical space (guards against rounding and reindex gaps).
+    e = e.fillna(0.0)
+    rowsum = e.sum(axis=1).replace(0, np.nan)
+    e = e.div(rowsum, axis=0).dropna(how="all")
     order = e.mean().sort_values(ascending=False).index.tolist()
     fig = go.Figure()
     for i, c in enumerate(order):
         fig.add_trace(go.Bar(
-            x=e.index, y=e[c].where(e[c] >= 0.005), name=c,
+            x=e.index, y=e[c], name=c,
             marker=dict(color=_asset_color(c, i), line=dict(color="rgba(44,44,44,0.55)", width=0.6)),
             hovertemplate=f"{c}: %{{y:.0%}}<extra></extra>"))
     fig.update_layout(
@@ -868,7 +873,8 @@ def asset_table_df(byac, base=None):
         "Win%": byac["win_rate"].map(lambda v: pct(v) if pd.notna(v) else "—")})
 
 
-def fig_table(df, left_cols=(), color_cols=(), side_col=None, status_col=None):
+def fig_table(df, left_cols=(), color_cols=(), side_col=None, status_col=None,
+              row_h=27, header_h=28, min_h=80):
     """Render a display DataFrame as an FT-cream Plotly table: PANEL2 header,
     PANEL cells, +/- coloured P&L columns, Long/Short + Open accents. Theme-proof
     (its colours don't depend on Streamlit's dataframe theming)."""
@@ -896,11 +902,11 @@ def fig_table(df, left_cols=(), color_cols=(), side_col=None, status_col=None):
         aligns.append("left" if c in left_cols else "right")
     fig = go.Figure(data=[go.Table(
         header=dict(values=header_vals, fill_color=PANEL2, line_color=LINE, align=aligns,
-                    font=dict(color=MUTED, family=MONO, size=11), height=28),
+                    font=dict(color=MUTED, family=MONO, size=11), height=header_h),
         cells=dict(values=cell_vals, fill_color=PANEL, line_color=LINE, align=aligns,
-                   font=dict(color=cell_colors, family=MONO, size=12), height=26))])
+                   font=dict(color=cell_colors, family=MONO, size=12), height=row_h))])
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      margin=dict(l=2, r=2, t=2, b=2), height=max(80, 32 + 27 * n))
+                      margin=dict(l=2, r=2, t=2, b=2), height=max(min_h, header_h + 6 + row_h * n))
     return fig
 
 
@@ -914,9 +920,9 @@ st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 .stApp {{ background:{INK}; }}
-.block-container {{ padding-top: 2.2rem; max-width: 1500px; }}
+.block-container {{ padding-top: 4.5rem; max-width: 1500px; }}
 [data-testid="stVerticalBlockBorderWrapper"] {{ background:{PANEL}; border-radius:10px; }}
-.hdr {{ color:{GREEK_BLUE}; font:700 21px {MONO}; letter-spacing:0.22em; }}
+.hdr {{ color:{GREEK_BLUE}; font:700 21px {MONO}; letter-spacing:0.22em; margin:0.4rem 0 0.6rem 0; }}
 .sect {{ color:{TXT}; font:600 13px {FONT}; letter-spacing:0.02em; margin:2px 0 8px 2px; }}
 .ddlabel {{ color:{MUTED}; font:400 10px {MONO}; letter-spacing:0.06em; margin:6px 0 0 4px; }}
 .note {{ color:{BRASS}; font:400 11px {MONO}; }}
@@ -946,12 +952,8 @@ def stat_row(tiles):
 _CHART = {"displayModeBar": False}
 
 # ---- header ----
-hcol, bcol = st.columns([6, 1])
-with hcol:
-    st.markdown('<div class="hdr">LONG HORIZON MACRO STRATEGY · DAILY REVIEW</div>',
-                unsafe_allow_html=True)
-with bcol:
-    st.button("↻ Refresh", use_container_width=True)   # triggers a rerun → reloads data
+st.markdown('<div class="hdr">LONG HORIZON MACRO STRATEGY · DAILY REVIEW</div>',
+            unsafe_allow_html=True)
 
 # ---- load ----
 try:
@@ -1100,7 +1102,8 @@ with c3:
             st.caption("No asset-class data.")
         else:
             st.plotly_chart(fig_table(_adf, left_cols=["Asset Class"],
-                                      color_cols=["Realized", "Unrealized", "Net"]),
+                                      color_cols=["Realized", "Unrealized", "Net"],
+                                      row_h=42, min_h=260),
                             use_container_width=True, theme=None, config=_CHART)
 
 # ---- row: tables ----
@@ -1120,5 +1123,6 @@ with t2:
             st.caption("No open positions.")
         else:
             st.plotly_chart(fig_table(_odf, left_cols=["Instrument", "Side"],
-                                      color_cols=["Unreal P&L"], side_col="Side"),
+                                      color_cols=["Unreal P&L"], side_col="Side",
+                                      row_h=42, min_h=260),
                             use_container_width=True, theme=None, config=_CHART)
