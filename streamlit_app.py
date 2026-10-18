@@ -642,7 +642,25 @@ def fig_cum_return(daily, dd):
     return fig
 
 
-def fig_exposure_bars(comp, index=None, height=360):
+def _latest_positions_by_class(legs):
+    """For the most recent bar: open positions per asset class as
+    '<br>Long | NAME<br>Short | NAME' (direction + instrument)."""
+    out = {}
+    if legs is None or legs.empty:
+        return out
+    for ac, g in legs[legs["is_open"]].groupby("asset_class"):
+        labels = []
+        for _, r in g.iterrows():
+            name = str(r["symbol"]).strip() or str(r["ib_ticker"]).strip()
+            lab = f"{r['side']} | {name}"
+            if lab not in labels:
+                labels.append(lab)
+        if labels:
+            out[ac] = "<br>" + "<br>".join(labels)
+    return out
+
+
+def fig_exposure_bars(comp, index=None, legs=None, height=360):
     if comp is None or comp.empty:
         return go.Figure(layout=dict(**PLOT, height=height))
     e = comp if index is None else comp.reindex(pd.DatetimeIndex(index).normalize())
@@ -656,12 +674,17 @@ def fig_exposure_bars(comp, index=None, height=360):
     rowsum = e.sum(axis=1).replace(0, np.nan)
     e = e.div(rowsum, axis=0).dropna(how="all")
     order = e.mean().sort_values(ascending=False).index.tolist()
+    posmap = _latest_positions_by_class(legs)
+    last = len(e.index) - 1
     fig = go.Figure()
     for i, c in enumerate(order):
+        cd = [""] * len(e.index)
+        if last >= 0 and c in posmap:
+            cd[last] = posmap[c]
         fig.add_trace(go.Bar(
-            x=e.index, y=e[c], name=c,
+            x=e.index, y=e[c].where(e[c] > 0), name=c, customdata=cd,
             marker=dict(color=_asset_color(c, i), line=dict(color="rgba(44,44,44,0.55)", width=0.6)),
-            hovertemplate=f"{c}: %{{y:.0%}}<extra></extra>"))
+            hovertemplate=f"{c}: %{{y:.0%}}%{{customdata}}<extra></extra>"))
     fig.update_layout(
         height=height, barmode="stack", bargap=0, paper_bgcolor=PANEL, plot_bgcolor=PANEL,
         font=dict(family=FONT, color=FT_COLORS["text"], size=12),
@@ -1068,7 +1091,8 @@ with left:
         st.plotly_chart(equity_fig, use_container_width=True, theme=None, config=_CHART)
         if expo is not None and not expo.empty:
             section("Exposure by Asset Class")
-            st.plotly_chart(fig_exposure_bars(expo, equity_index), use_container_width=True, theme=None, config=_CHART)
+            st.plotly_chart(fig_exposure_bars(expo, equity_index, legs=legs),
+                            use_container_width=True, theme=None, config=_CHART)
         st.markdown(f'<div class="ddlabel">{dd_label}</div>', unsafe_allow_html=True)
         st.plotly_chart(dd_fig, use_container_width=True, theme=None, config=_CHART)
 with right:
