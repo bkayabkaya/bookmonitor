@@ -494,7 +494,8 @@ PLOT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(family=MONO, color=MUTED, size=11), margin=dict(l=48, r=18, t=28, b=32),
             xaxis=dict(gridcolor=LINE, zerolinecolor=LINE, linecolor=LINE),
             yaxis=dict(gridcolor=LINE, zerolinecolor=LINE, linecolor=LINE),
-            hoverlabel=dict(font_family=MONO, bgcolor=PANEL2), showlegend=False)
+            hoverlabel=dict(font=dict(family=MONO, color=TXT, size=11),
+                            bgcolor="#FFFFFF", bordercolor=LINE), showlegend=False)
 
 
 def _asset_color(name, i):
@@ -692,7 +693,8 @@ def fig_exposure_bars(comp, index=None, legs=None, height=360):
         height=height, barmode="stack", bargap=0, paper_bgcolor=PANEL, plot_bgcolor=PANEL,
         font=dict(family=FONT, color=FT_COLORS["text"], size=12),
         margin=dict(l=56, r=24, t=56, b=40), hovermode="closest",
-        hoverlabel=dict(bgcolor="white", bordercolor=LINE, font=dict(family=MONO, size=11)),
+        hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=LINE,
+                        font=dict(family=MONO, size=11, color=TXT)),
         legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="left", x=0,
                     font=dict(size=12), bgcolor="rgba(0,0,0,0)", traceorder="normal"))
     fig.update_yaxes(tickformat=".0%", range=[0, 1], gridcolor=FT_COLORS["grid"], zeroline=False)
@@ -926,7 +928,12 @@ def fig_table(df, left_cols=(), color_cols=(), side_col=None, status_col=None,
         cell_vals.append(vals)
         cell_colors.append(colors)
         aligns.append("left" if c in left_cols else "right")
+    # Proportional column widths from the widest content (header included) so a
+    # long header like "UNREALIZED" or "INSTRUMENTS" is never clipped.
+    widths = [max([len(str(c)) + 2] + [len(v) for v in vals])
+              for c, vals in zip(cols, cell_vals)]
     fig = go.Figure(data=[go.Table(
+        columnwidth=widths,
         header=dict(values=header_vals, fill_color=PANEL2, line_color=LINE, align=aligns,
                     font=dict(color=MUTED, family=MONO, size=11), height=header_h),
         cells=dict(values=cell_vals, fill_color=PANEL, line_color=LINE, align=aligns,
@@ -946,7 +953,7 @@ st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 .stApp {{ background:{INK}; }}
-.block-container {{ padding-top: 4.5rem; max-width: 1500px; }}
+.block-container {{ padding-top: 4.5rem; padding-left: 2rem; padding-right: 2rem; max-width: 1760px; }}
 [data-testid="stVerticalBlockBorderWrapper"] {{ background:{PANEL}; border-radius:10px; }}
 .hdr {{ color:{GREEK_BLUE}; font:700 21px {MONO}; letter-spacing:0.22em; margin:0.4rem 0 0.6rem 0; }}
 .sect {{ color:{TXT}; font:600 13px {FONT}; letter-spacing:0.02em; margin:2px 0 8px 2px; }}
