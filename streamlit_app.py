@@ -792,6 +792,9 @@ def fig_asset(byac, base=None):
                            xanchor="left" if v >= 0 else "right", showarrow=False,
                            text=sp, font=dict(family=MONO, size=11, color="#000000"))
     fig.update_layout(**PLOT, height=max(240, 34 * len(df) + 60))
+    # Left margin sized to the longest asset-class label so none are clipped.
+    lmargin = max(70, 9 * max((len(str(c)) for c in cls), default=8) + 16)
+    fig.update_layout(margin=dict(l=lmargin, r=18, t=28, b=32))
     fig.update_xaxes(tickformat=".1%" if use_pct else "~s", tickprefix="" if use_pct else "$",
                      range=[min(xmin, 0) - span * 0.18, xmax + span * 0.26])
     return fig
