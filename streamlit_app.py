@@ -163,9 +163,10 @@ def load_exposure():
         "Softs":      ("softs_exposure", "soft_exposure"),
         "Volatility": ("volatility_exposure", "vol_exposure"),
         "Index":      ("index_exposure",),
-        "Rates":      ("rates_exposure", "rate_exposure"),
-        "Energy":     ("energy_exposure",),
-        "ETFs":       ("etf_exposure", "etfs_exposure"),
+        "Rates":        ("rates_exposure", "rate_exposure"),
+        "Energy":       ("energy_exposure",),
+        "Agricultural": ("agricultural_exposure", "agriculture_exposure", "ag_exposure"),
+        "ETFs":         ("etf_exposure", "etfs_exposure"),
     }
     d = pd.DataFrame()
     d["date"] = pd.to_datetime(raw["Date"], errors="coerce")
@@ -484,7 +485,7 @@ MONTHLY_POS, MONTHLY_NEG = "#0D3B66", "#8E2323"
 ASSET_COLORS = {
     "Equities": GREEK_BLUE, "Cash": "#B5A694", "Currency": "#5E9C9A", "Metals": "#C9A227",
     "Softs": "#7A9E5E", "Volatility": "#8E5A9E", "Index": "#2C3E66", "Rates": "#4F7C8A",
-    "Energy": "#C4622D", "ETFs": "#9C6B4E",
+    "Energy": "#C4622D", "Agricultural": "#6B8E3D", "ETFs": "#9C6B4E",
 }
 _EXPO_PALETTE = ["#1868B7", "#C9A227", "#9C6B4E", "#5E9C9A", "#8E5A9E",
                  "#2C3E66", "#7A9E5E", "#C4622D", "#4F7C8A", "#B5A694"]
