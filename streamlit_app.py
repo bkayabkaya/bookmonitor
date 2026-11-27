@@ -720,7 +720,7 @@ def fig_exposure_bars(comp, index=None, legs=None, height=360):
             marker=dict(color=_asset_color(c, i), line=dict(color="rgba(44,44,44,0.55)", width=0.6)),
             hovertemplate=f"{c}: %{{y:.0%}}%{{customdata}}<extra></extra>"))
     fig.update_layout(
-        height=height, barmode="stack", bargap=0, paper_bgcolor=PANEL, plot_bgcolor=PANEL,
+        height=height, barmode="stack", bargap=0, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family=FONT, color=FT_COLORS["text"], size=12),
         margin=dict(l=56, r=24, t=56, b=40), hovermode="closest",
         hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=LINE,
@@ -772,7 +772,6 @@ def fig_exposure(exp, base=None):
                                 line=dict(width=0)),
                     text=labels, textposition="auto", textfont=dict(family=MONO, size=10, color=ON_FILL)))
     fig.update_layout(**PLOT, height=max(260, 26 * len(df) + 40))
-    fig.update_layout(paper_bgcolor=PANEL, plot_bgcolor=PANEL)
     fig.update_xaxes(tickformat=".0%" if use_pct else "~s", tickprefix="" if use_pct else "$")
     return fig
 
@@ -826,8 +825,7 @@ def fig_asset(byac, base=None):
     fig.update_layout(**PLOT, height=max(240, 34 * len(df) + 60))
     # Left margin sized to the longest asset-class label so none are clipped.
     lmargin = max(70, 9 * max((len(str(c)) for c in cls), default=8) + 16)
-    fig.update_layout(margin=dict(l=lmargin, r=18, t=28, b=32),
-                      paper_bgcolor=PANEL, plot_bgcolor=PANEL)
+    fig.update_layout(margin=dict(l=lmargin, r=18, t=28, b=32))
     fig.update_xaxes(tickformat=".1%" if use_pct else "~s", tickprefix="" if use_pct else "$",
                      range=[min(xmin, 0) - span * 0.18, xmax + span * 0.26])
     return fig
@@ -1190,7 +1188,7 @@ def _fig_class_share(by, height):
     lo, hi = min(d["share"].min(), 0), max(d["share"].max(), 0)
     pad = (hi - lo) * 0.22 + 0.02
     fig.update_layout(
-        height=height, paper_bgcolor=PANEL, plot_bgcolor=PANEL, showlegend=False,
+        height=height, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False,
         font=dict(family=FONT, color=TXT, size=12), margin=dict(l=20, r=24, t=30, b=36),
         hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)))
     fig.update_yaxes(automargin=True, showgrid=False, ticklabelstandoff=10,
@@ -1223,9 +1221,9 @@ def _symbols_block_html(by, seg, height):
             f'background:{color};vertical-align:middle"></span>{c}</div>'
             f'<div style="flex:1">{chips}</div></div>')
     inner = "".join(rows)
-    return (f'<div style="min-height:{height}px;box-sizing:border-box;padding:16px 14px;display:flex;'
-            f'flex-direction:column;justify-content:space-evenly;background:{PANEL};'
-            f'border:1px solid {BORDER_FT};border-radius:8px">{inner}</div>')
+    # No own border/background — it sits inside a bordered Streamlit container already.
+    return (f'<div style="min-height:{height}px;box-sizing:border-box;padding:6px 2px;display:flex;'
+            f'flex-direction:column;justify-content:space-evenly">{inner}</div>')
 
 
 def _fig_trade_hits(seg, height):
@@ -1257,7 +1255,8 @@ def _fig_trade_hits(seg, height):
                                font=dict(family=MONO, size=12, color=TXT))
     fig.update_annotations(selector=dict(xref="paper"), x=0, xanchor="left",
                            font=dict(family=MONO, size=10, color=MUTED))
-    fig.update_layout(height=height, barmode="overlay", paper_bgcolor=PANEL, plot_bgcolor=PANEL,
+    fig.update_layout(height=height, barmode="overlay", paper_bgcolor="rgba(0,0,0,0)",
+                      plot_bgcolor="rgba(0,0,0,0)",
                       showlegend=False, font=dict(family=FONT, color=TXT, size=12),
                       margin=dict(l=20, r=20, t=40, b=24),
                       hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)))
@@ -1282,8 +1281,8 @@ def _mu_market_stats(r, markets):
 
 
 def _mu_rr_layout(fig, height):
-    fig.update_layout(height=height, paper_bgcolor=PANEL, plot_bgcolor=PANEL, showlegend=False,
-                      font=dict(family=FONT, color=TXT, size=12),
+    fig.update_layout(height=height, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      showlegend=False, font=dict(family=FONT, color=TXT, size=12),
                       hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)))
     return fig
 
@@ -1413,7 +1412,7 @@ def _fig_strategy_vs_markets_month(r, closes, m0, m_next, strat_name=STRATEGY_NA
                            font=dict(family=MONO, size=12 if is_strat else 11, color=color),
                            opacity=1.0 if is_strat else 0.6, bgcolor=PANEL if is_strat else "rgba(0,0,0,0)")
     fig.add_hline(y=0, line=dict(color=TXT, width=1, dash="dot"), opacity=0.45)
-    fig.update_layout(height=height, paper_bgcolor=PANEL, plot_bgcolor=PANEL,
+    fig.update_layout(height=height, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                       font=dict(family=FONT, color=TXT, size=12), margin=dict(l=70, r=235, t=46, b=40),
                       hovermode="x unified",
                       hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)),
