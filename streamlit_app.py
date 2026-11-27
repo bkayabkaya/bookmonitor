@@ -1216,7 +1216,7 @@ def _symbols_block_html(by, seg, height):
             for s in syms)
         rows.append(
             f'<div style="display:flex;align-items:center;gap:8px;margin:2px 0">'
-            f'<div style="font:600 13px {FONT};min-width:92px;white-space:nowrap">'
+            f'<div style="font:600 13px {FONT};color:{TXT};min-width:92px;white-space:nowrap">'
             f'<span style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:8px;'
             f'background:{color};vertical-align:middle"></span>{c}</div>'
             f'<div style="flex:1">{chips}</div></div>')
@@ -1533,13 +1533,6 @@ try:
 except Exception:
     mu_legs = None
 mu_by, mu_seg = _mu_month_class_rows(mu_legs, mu_m0, mu_mnext)
-# market price files (optional; charts degrade if absent)
-mu_markets = {n: s for n, k in MU_CORR_ASSETS.items() if (s := _mu_load_asset(k)) is not None}
-mu_closes = {lbl: (s, col) for lbl, (k, col) in MU_ASSETS.items() if (s := _mu_load_asset(k)) is not None}
-if mu_r is not None and len(mu_r):
-    mu_stats, mu_strat = _mu_market_stats(mu_r, mu_markets)
-else:
-    mu_stats, mu_strat = pd.DataFrame(), {}
 
 realized_pct = as_pct(totals["realised"])
 unreal_pct = as_pct(totals["unrealised"])
@@ -1664,33 +1657,6 @@ with c3:
                                       color_cols=["Realized", "Unrealized", "Net"],
                                       row_h=42, min_h=260),
                             use_container_width=True, theme=None, config=_CHART)
-
-# ---- row: strategy correlation + risk / return map ----
-if not mu_stats.empty:
-    rc1, rc2 = st.columns([1, 2])
-    with rc1:
-        with st.container(border=True):
-            section("Strategy Correlation  ·  vs each market, daily returns")
-            st.plotly_chart(_fig_correlation(mu_stats), use_container_width=True, theme=None, config=_CHART)
-    with rc2:
-        with st.container(border=True):
-            section("Risk / Return Map  ·  annualized return vs volatility  ·  ◆ = strategy")
-            st.plotly_chart(_fig_risk_return(mu_stats, mu_strat),
-                            use_container_width=True, theme=None, config=_CHART)
-elif mu_r is None or not len(mu_r):
-    pass
-else:
-    with st.container(border=True):
-        section("Strategy Correlation  ·  Risk / Return Map")
-        st.caption(f"No market price files found in `{MU_DATA_DIR}/`. Add per-market CSVs "
-                   "(e.g. es, gold, cl, dxy, us10) to show the correlation and risk/return charts.")
-
-# ---- strategy vs markets (current month) ----
-if mu_r is not None and len(mu_r):
-    with st.container(border=True):
-        section(f"Strategy vs markets  ·  {mu_mname}  ·  cumulative % change from the month's start")
-        st.plotly_chart(_fig_strategy_vs_markets_month(mu_r, mu_closes, mu_m0, mu_mnext),
-                        use_container_width=True, theme=None, config=_CHART)
 
 # ---- row: tables ----
 t1, t2 = st.columns([1.4, 1])
