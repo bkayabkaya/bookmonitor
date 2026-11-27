@@ -14,6 +14,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 # ---------------------------------------------------------------------------
@@ -26,6 +27,30 @@ EXPOSURE_SHEET = "exposure"
 # Daily-returns CSV (Date + Daily_Return) feeding the Monthly Returns table.
 MONTHLY_RETURNS_FILE = os.environ.get("MONTHLY_RETURNS_FILE",
                                       "str_II_dailyreturns_fullhistory.csv")
+STRATEGY_NAME = os.environ.get("STRATEGY_NAME", "Long Horizon Macro Strategy")
+# Folder of market price files for the correlation / risk-return / strategy-vs-markets charts.
+# Each market is looked up at   <MU_DATA_DIR>/<key>/<key>_daily/<key>.csv   or   <MU_DATA_DIR>/<key>.csv
+# Missing files are skipped (those charts degrade gracefully).
+MU_DATA_DIR = os.environ.get("MU_DATA_DIR", "market_data")
+MU_CORR_ASSETS = {   # markets on the correlation + risk/return charts (folder key under MU_DATA_DIR)
+    "S&P 500": "es", "Gold": "gold", "Crude Oil": "cl", "Dow": "ym", "Russell": "rty",
+    "Nasdaq": "nq", "US Dollar": "dxy", "US 10-yr Note": "us10",
+}
+MU_ASSETS = {        # markets drawn on the strategy-vs-markets chart: label -> (key, line colour)
+    "S&P500":                 ("es",   "#37474F"),
+    "Gold":                   ("gold", "#B8860B"),
+    "US Dollar":              ("dxy",  "#00897B"),
+    "US 10-yr Treasury Note": ("us10", "#FF8C42"),
+}
+_CLASS_ALIASES = {   # Trades-sheet spelling -> asset-class name used on the charts
+    "equity": "Equities", "equities": "Equities", "stocks": "Equities", "currency": "Currency",
+    "currencies": "Currency", "fx": "Currency", "metal": "Metals", "metals": "Metals", "soft": "Softs",
+    "softs": "Softs", "vol": "Volatility", "volatility": "Volatility", "index": "Index", "indices": "Index",
+    "rate": "Rates", "rates": "Rates", "energy": "Energy", "etf": "ETFs", "etfs": "ETFs", "cash": "Cash",
+    "agricultural": "Agricultural", "agriculture": "Agricultural", "ags": "Agricultural", "grains": "Agricultural",
+}
+_CLASS_FALLBACK = ["#F0A830", "#1868B7", "#8E2323", "#4C8C63", "#7C5CBF", "#6E7681", "#2AA9A0"]
+_MU_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 _MONTH_CODES = {"F": 1, "G": 2, "H": 3, "J": 4, "K": 5, "M": 6,
                 "N": 7, "Q": 8, "U": 9, "V": 10, "X": 11, "Z": 12}
@@ -471,14 +496,18 @@ def by_asset_class(trades, marks, legs=None):
 FT_COLORS = {"bg": "#e5d5c5", "text": "#2C2C2C", "grid": "#E0E0E0",
              "win": "#2E7D32", "loss": "#C41E3A", "neutral": "#FF8C42", "accent": "#1565C0"}
 INK   = FT_COLORS["bg"]
-PANEL = "#EFE4D7"
-PANEL2 = "#DBC9B6"
+PANEL = "#F3EADF"
+PANEL2 = "#EADCCD"
 LINE  = FT_COLORS["grid"]
 TXT   = FT_COLORS["text"]
 MUTED = "#6E6056"
 BRASS = FT_COLORS["accent"]
 UP, DOWN, BLUE = FT_COLORS["win"], FT_COLORS["loss"], FT_COLORS["accent"]
 BAR_UP, BAR_DOWN = "#13420F", "#5E0A14"
+# Attached-report ("monthly update") styling tones.
+BAR_POS, BAR_NEG = "#0B1F4B", "#6B0F1A"      # dark navy / dark red bar blocks
+BORDER_FT = "#D3BFA9"                         # panel border on the FT cream
+SERIF = "Georgia, 'Times New Roman', serif"
 ON_FILL = "#FFFFFF"
 GREEK_BLUE = "#1868B7"
 MONTHLY_POS, MONTHLY_NEG = "#0D3B66", "#8E2323"
@@ -739,9 +768,11 @@ def fig_exposure(exp, base=None):
     xvals = (df["gross_notional"] / base) if use_pct else df["gross_notional"]
     labels = [pct(v) for v in xvals] if use_pct else [money(v) for v in df["gross_notional"]]
     fig = go.Figure(go.Bar(y=df["symbol"], x=xvals, orientation="h",
-                    marker_color=[BAR_UP if s == "Long" else BAR_DOWN for s in df["side"]], marker_line_width=0,
+                    marker=dict(color=[BAR_POS if s == "Long" else BAR_NEG for s in df["side"]],
+                                line=dict(width=0)),
                     text=labels, textposition="auto", textfont=dict(family=MONO, size=10, color=ON_FILL)))
     fig.update_layout(**PLOT, height=max(260, 26 * len(df) + 40))
+    fig.update_layout(paper_bgcolor=PANEL, plot_bgcolor=PANEL)
     fig.update_xaxes(tickformat=".0%" if use_pct else "~s", tickprefix="" if use_pct else "$")
     return fig
 
@@ -782,7 +813,7 @@ def fig_asset(byac, base=None):
     splits = [ls_split(r) for _, r in df.iterrows()]
 
     fig = go.Figure(go.Bar(y=cls, x=xvals, orientation="h",
-                    marker_color=[BAR_UP if v >= 0 else BAR_DOWN for v in xvals], marker_line_width=0,
+                    marker=dict(color=[BAR_POS if v >= 0 else BAR_NEG for v in xvals], line=dict(width=0)),
                     text=nets, textposition="auto", textfont=dict(family=MONO, size=11, color=ON_FILL),
                     cliponaxis=False))
     xmax, xmin = max(xvals + [0]), min(xvals + [0])
@@ -795,7 +826,8 @@ def fig_asset(byac, base=None):
     fig.update_layout(**PLOT, height=max(240, 34 * len(df) + 60))
     # Left margin sized to the longest asset-class label so none are clipped.
     lmargin = max(70, 9 * max((len(str(c)) for c in cls), default=8) + 16)
-    fig.update_layout(margin=dict(l=lmargin, r=18, t=28, b=32))
+    fig.update_layout(margin=dict(l=lmargin, r=18, t=28, b=32),
+                      paper_bgcolor=PANEL, plot_bgcolor=PANEL)
     fig.update_xaxes(tickformat=".1%" if use_pct else "~s", tickprefix="" if use_pct else "$",
                      range=[min(xmin, 0) - span * 0.18, xmax + span * 0.26])
     return fig
@@ -948,6 +980,450 @@ def fig_table(df, left_cols=(), color_cols=(), side_col=None, status_col=None,
 
 
 # ===========================================================================
+#  MONTHLY-UPDATE VISUALS  (ported from the monthly-update report)
+# ===========================================================================
+_ANN_MU = 252
+
+
+def _mu_load_returns():
+    """Daily-return Series from the returns CSV (same file as the monthly table)."""
+    path = MONTHLY_RETURNS_FILE
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        raw = pd.read_csv(path)
+    except Exception:
+        return None
+    raw.columns = [str(c).strip().lower() for c in raw.columns]
+    if "date" not in raw.columns:
+        return None
+    rcol = next((c for c in ("daily_return", "daily return", "return", "ret", "daily_ret")
+                 if c in raw.columns), None)
+    if rcol is None:
+        return None
+    d = pd.to_datetime(raw["date"], errors="coerce")
+    s = pd.Series(pd.to_numeric(raw[rcol], errors="coerce").values, index=d)
+    s = s[s.index.notna()].sort_index().fillna(0.0)
+    s.index = s.index.normalize()
+    s = s[~s.index.duplicated(keep="last")]
+    if len(s) and s.abs().quantile(0.99) > 0.5:      # stored as % rather than fractions
+        s = s / 100.0
+    return s if len(s) else None
+
+
+def _mu_load_asset(key):
+    """Market close Series from MU_DATA_DIR (nested or flat layout); None if missing."""
+    candidates = [os.path.join(MU_DATA_DIR, key, f"{key}_daily", f"{key}.csv"),
+                  os.path.join(MU_DATA_DIR, f"{key}.csv")]
+    path = next((p for p in candidates if os.path.exists(p)), None)
+    if path is None:
+        return None
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return None
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    tcol = next((c for c in ("time", "date", "datetime", "timestamp") if c in df.columns), None)
+    if tcol is None or "close" not in df.columns:
+        return None
+    t = df[tcol]
+    if pd.api.types.is_numeric_dtype(t):
+        idx = pd.to_datetime(t, unit="ms" if t.max() > 1e11 else "s")
+    else:
+        idx = pd.to_datetime(t, errors="coerce", utc=True).dt.tz_convert(None)
+    s = pd.Series(pd.to_numeric(df["close"], errors="coerce").values, index=idx)
+    s = s[s.index.notna()].dropna().sort_index()
+    s.index = s.index.normalize()
+    s = s[~s.index.duplicated(keep="last")]
+    return s if len(s) else None
+
+
+def _mu_find_header(xls, sheet, key):
+    probe = pd.read_excel(xls, sheet_name=sheet, header=None, dtype=str)
+    return next((i for i in range(min(len(probe), 30))
+                 if key in [str(v).strip() for v in probe.iloc[i]]), 0)
+
+
+def _mu_load_legs():
+    """Trades sheet, one row per leg, with asset class (column K), identifier, ticker, theme,
+    trade type and P&L — the inputs the monthly-update trade charts need."""
+    path = TRADES_FILE
+    if not path or not os.path.exists(path):
+        return None
+    if not str(path).lower().endswith((".xlsx", ".xlsm", ".xls")):
+        return None
+    xls = pd.ExcelFile(path)
+    sheet = next((s for s in xls.sheet_names if s.strip().lower() == "trades"), xls.sheet_names[0])
+    raw = pd.read_excel(xls, sheet_name=sheet, header=_mu_find_header(xls, sheet, "Entry Date"), dtype=str)
+    raw.columns = [str(c).strip() for c in raw.columns]
+    if "Entry Date" not in raw.columns:
+        return None
+    raw = raw[raw["Entry Date"].notna() & (raw["Entry Date"].astype(str).str.strip() != "")]
+    if raw.empty:
+        return None
+    sym = raw["Symbol"].astype(str).str.strip()
+    # Asset class = column K (11th column) when present, else the "Asset Class" named column.
+    ac_col = raw.columns[10] if raw.shape[1] > 10 else None
+    if ac_col is None or ac_col.strip().lower() in ("", "nan"):
+        ac_col = next((c for c in raw.columns if c.strip().lower() == "asset class"), None)
+    if ac_col is None:
+        ac = pd.Series(np.nan, index=raw.index)
+    else:
+        ac = raw[ac_col].astype(str).str.strip().replace({"": np.nan, "nan": np.nan, "None": np.nan})
+        ac = ac.map(lambda v: _CLASS_ALIASES.get(v.lower(), v) if pd.notna(v) else v)
+    known = ac.groupby(sym).agg(lambda v: v.dropna().mode().iloc[0] if v.notna().any() else np.nan)
+    ac = ac.fillna(sym.map(known)).fillna("Unclassified")
+    name_col = next((c for c in raw.columns if c.lower() in ("instrument name", "instrument_name")), None)
+    tpnl_raw = raw["Trade PnL"].astype(str).str.strip() if "Trade PnL" in raw else pd.Series("", index=raw.index)
+    qty = _to_num(raw["Quantity"]) if "Quantity" in raw else pd.Series(np.nan, index=raw.index)
+    legs = pd.DataFrame({
+        "trade_id": _to_num(raw["Trade ID"]),
+        "entry_date": pd.to_datetime(raw["Entry Date"], errors="coerce"),
+        "exit_date": pd.to_datetime(raw["Exit Date"], errors="coerce") if "Exit Date" in raw else pd.NaT,
+        "symbol": sym,
+        "name": (raw[name_col].astype(str).str.strip().replace({"nan": "", "None": ""}) if name_col else ""),
+        "asset_class": ac,
+        "side": np.where(qty >= 0, "Long", "Short"),
+        "leg_pnl": _to_num(raw["Leg PnL"]) if "Leg PnL" in raw else np.nan,
+        "trade_pnl_open": tpnl_raw.str.upper().eq("OPEN"),
+        "comm": _to_num(raw["Comm"]).fillna(0.0) if "Comm" in raw else 0.0,
+        "trade_type": (raw["Trade Type"].fillna("").astype(str).str.strip() if "Trade Type" in raw else ""),
+    })
+    legs["name"] = legs["name"].where(legs["name"].ne(""), legs["symbol"])
+    month_codes = set("FGHJKMNQUVXZ")
+
+    def _tk(ib, sy):
+        t = str(ib).strip() if ib is not None else ""
+        if not t or t.lower() in ("nan", "none"):
+            t = str(sy).split()[0] if str(sy).strip() else ""
+        while len(t) >= 3 and t[-1].isdigit() and (t[-2].isdigit() or t[-2].upper() in month_codes):
+            t = t[:-1] if t[-2].isdigit() else t[:-2]
+        return t.upper()
+    ib = raw["IB_TICKER"] if "IB_TICKER" in raw else pd.Series("", index=raw.index)
+    legs["ticker"] = [_tk(a, b) for a, b in zip(ib.values, sym.values)]
+    id_col = next((c for c in raw.columns if str(c).strip().lower() == "identifier"), None)
+    ident = (raw[id_col].fillna("").astype(str).str.strip().str.upper().replace({"NAN": "", "NONE": ""})
+             if id_col else pd.Series("", index=raw.index))
+    legs["ident"] = [i or t for i, t in zip(ident.values, legs["ticker"])]
+    theme_col = next((c for c in raw.columns if c.strip().lower() == "theme"), None)
+    legs["theme"] = (raw[theme_col].fillna("").astype(str).str.strip().replace({"nan": "", "None": ""}).values
+                     if theme_col else "")
+    return legs.reset_index(drop=True)
+
+
+def _mu_closed_legs(legs):
+    if legs is None or legs.empty:
+        return pd.DataFrame()
+    x = legs[legs["exit_date"].notna() & legs["leg_pnl"].notna()].copy()
+    x["pnl"] = x["leg_pnl"] - x["comm"]
+    return x
+
+
+def _mu_month_class_rows(legs, m0, m_next):
+    """Trades OPENED in the month that are fully closed. Returns (by_class, per_trade);
+    shares are of those trades' total net P&L, so the class nets add up to 100%."""
+    empty = (pd.DataFrame(), pd.DataFrame())
+    if legs is None or legs.empty:
+        return empty
+    still_open = legs["trade_pnl_open"] | legs["exit_date"].isna()
+    open_ids = set(legs.loc[still_open, "trade_id"].dropna())
+    x = _mu_closed_legs(legs)
+    if x.empty:
+        return empty
+    x = x[(x["entry_date"] >= m0) & (x["entry_date"] < m_next) & ~x["trade_id"].isin(open_ids)].copy()
+    if x.empty:
+        return empty
+    x["long_name"] = x["side"] + " " + x["name"].astype(str)
+    seg = (x.groupby(["asset_class", "trade_id"])
+            .agg(pnl=("pnl", "sum"),
+                 symbol=("ticker", lambda v: "/".join(dict.fromkeys(v))),
+                 ident=("ident", lambda v: list(dict.fromkeys(v))),
+                 theme=("theme", lambda v: next((t for t in v if t), "")),
+                 long_name=("long_name", lambda v: " / ".join(dict.fromkeys(v))),
+                 exit=("exit_date", "max"))
+            .reset_index())
+    tt = x.groupby("trade_id").agg(tt=("trade_type", lambda v: next((t for t in v if t), "").lower()),
+                                   sides=("side", lambda v: set(v)))
+    tt["style"] = [("Relative value" if ("relative" in t or t in ("rv", "rel val")) else
+                    "Directional" if "direction" in t else
+                    "Relative value" if len(sd) > 1 else "Directional") for t, sd in zip(tt["tt"], tt["sides"])]
+    seg = seg.merge(tt["style"], left_on="trade_id", right_index=True, how="left")
+    by = seg.groupby("asset_class").agg(pnl=("pnl", "sum"), n=("trade_id", "nunique")).reset_index()
+    total = by["pnl"].sum()
+    if not total:
+        return empty
+    by["share"] = by["pnl"] / abs(total)
+    seg["share"] = seg["pnl"] / abs(total)
+    seg = seg[seg["pnl"] != 0].copy()
+    seg.attrs["ident_share"] = (x[x["trade_id"].isin(seg["trade_id"])].groupby(["asset_class", "ident"])["pnl"]
+                                .sum() / abs(total))
+    return by.sort_values("pnl", ascending=False).reset_index(drop=True), seg
+
+
+def _mu_row_height(by):
+    return max(320, 52 * len(by) + 150)
+
+
+def _mu_short(text, n=26):
+    text = str(text)
+    return text if len(text) <= n else text[:n - 1] + "…"
+
+
+def _mu_class_share_note(by):
+    n = int(by["n"].sum())
+    return f"{n} trade{'s' if n != 1 else ''} · % of the month's trade P&L"
+
+
+def _fig_class_share(by, height):
+    """Each asset class's share of the month's net trade P&L (classes add up to 100%)."""
+    d = by.sort_values("share")
+    fig = go.Figure(go.Bar(
+        y=d["asset_class"], x=d["share"], orientation="h", width=0.55,
+        marker=dict(color=[BAR_NEG if v < 0 else BAR_POS for v in d["share"]], line=dict(width=0)),
+        text=[f"{v:+.0%}" for v in d["share"]], textposition="outside", cliponaxis=False,
+        textfont=dict(family=MONO, size=13, color=TXT),
+        customdata=d["n"], hovertemplate="<b>%{y}</b>: %{x:+.1%} of the month's trade P&L"
+                                         "<br>%{customdata} trade(s)<extra></extra>"))
+    lo, hi = min(d["share"].min(), 0), max(d["share"].max(), 0)
+    pad = (hi - lo) * 0.22 + 0.02
+    fig.update_layout(
+        height=height, paper_bgcolor=PANEL, plot_bgcolor=PANEL, showlegend=False,
+        font=dict(family=FONT, color=TXT, size=12), margin=dict(l=20, r=24, t=30, b=36),
+        hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)))
+    fig.update_yaxes(automargin=True, showgrid=False, ticklabelstandoff=10,
+                     tickfont=dict(size=13, color=TXT))
+    fig.update_xaxes(range=[lo - (pad if lo < 0 else 0), hi + pad], tickformat=".0%",
+                     gridcolor=LINE, zeroline=True, zerolinecolor=TXT, zerolinewidth=1.2,
+                     tickfont=dict(size=10, color=MUTED))
+    return fig
+
+
+def _symbols_block_html(by, seg, height):
+    """Traded symbols as chips per asset class (Identifier in capitals), each with its share
+    of the month's trade P&L. Returned as an HTML string for st.markdown."""
+    shares = seg.attrs.get("ident_share", pd.Series(dtype=float))
+    rows = []
+    for i, c in enumerate(by.sort_values("share", ascending=False)["asset_class"]):
+        color = ASSET_COLORS.get(c, _CLASS_FALLBACK[i % len(_CLASS_FALLBACK)])
+        syms = sorted(dict.fromkeys(seg.loc[seg["asset_class"] == c, "ident"].explode()),
+                      key=lambda k: -shares.get((c, k), 0))
+        chips = "".join(
+            f'<span style="display:inline-block;background:{PANEL2};border:1px solid {BORDER_FT};'
+            f'border-radius:999px;padding:2px 10px;margin:3px 6px 3px 0;font:600 12px {MONO};color:{TXT}">'
+            f'{s}<span style="color:{pnl_color(shares.get((c, s), 0))};margin-left:4px">'
+            f'{shares.get((c, s), 0):+.0%}</span></span>'
+            for s in syms)
+        rows.append(
+            f'<div style="display:flex;align-items:center;gap:8px;margin:2px 0">'
+            f'<div style="font:600 13px {FONT};min-width:92px;white-space:nowrap">'
+            f'<span style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:8px;'
+            f'background:{color};vertical-align:middle"></span>{c}</div>'
+            f'<div style="flex:1">{chips}</div></div>')
+    inner = "".join(rows)
+    return (f'<div style="min-height:{height}px;box-sizing:border-box;padding:16px 14px;display:flex;'
+            f'flex-direction:column;justify-content:space-evenly;background:{PANEL};'
+            f'border:1px solid {BORDER_FT};border-radius:8px">{inner}</div>')
+
+
+def _fig_trade_hits(seg, height):
+    """Hit ratio (share of trades that made money) on a 0–100% track, with the count:
+    by asset class on top, directional vs relative value below."""
+    cls = seg.groupby("asset_class")["pnl"].agg(n="size", w=lambda v: int((v > 0).sum()))
+    cls = cls.sort_values(["n", "w"])
+    trd = seg.groupby("trade_id").agg(pnl=("pnl", "sum"), style=("style", "first"))
+    sty = trd.groupby("style")["pnl"].agg(n="size", w=lambda v: int((v > 0).sum()))
+    sty = sty.reindex(["Relative value", "Directional"]).dropna()
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.14,
+                        row_heights=[len(cls) + 0.5, max(len(sty), 1) + 0.5],
+                        subplot_titles=["BY ASSET CLASS", "DIRECTIONAL VS RELATIVE VALUE"])
+    for row, d in ((1, cls), (2, sty)):
+        names = list(d.index)
+        if not names:
+            continue
+        hit = (d["w"] / d["n"]).tolist()
+        fig.add_trace(go.Bar(y=names, x=[1] * len(names), orientation="h", width=0.5, hoverinfo="skip",
+                             marker=dict(color=PANEL2, line=dict(width=0))), row=row, col=1)
+        fig.add_trace(go.Bar(y=names, x=hit, orientation="h", width=0.5,
+                             marker=dict(color=BAR_POS, line=dict(width=0)),
+                             customdata=np.stack([d["w"], d["n"]], axis=-1),
+                             hovertemplate="%{y}: %{customdata[0]} of %{customdata[1]} trades made money"
+                                           "<extra></extra>"), row=row, col=1)
+        for nm, h_, w, n in zip(names, hit, d["w"], d["n"]):
+            fig.add_annotation(x=1.0, y=nm, xanchor="left", xshift=8, showarrow=False, row=row, col=1,
+                               text=f"<b>{h_:.0%}</b>  <span style='color:{MUTED}'>{int(w)}/{int(n)}</span>",
+                               font=dict(family=MONO, size=12, color=TXT))
+    fig.update_annotations(selector=dict(xref="paper"), x=0, xanchor="left",
+                           font=dict(family=MONO, size=10, color=MUTED))
+    fig.update_layout(height=height, barmode="overlay", paper_bgcolor=PANEL, plot_bgcolor=PANEL,
+                      showlegend=False, font=dict(family=FONT, color=TXT, size=12),
+                      margin=dict(l=20, r=20, t=40, b=24),
+                      hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)))
+    fig.update_xaxes(range=[0, 1.42], showgrid=False, showticklabels=False, zeroline=False)
+    fig.update_yaxes(automargin=True, showgrid=False, tickfont=dict(size=12, color=TXT))
+    return fig
+
+
+def _mu_market_stats(r, markets):
+    """Daily-return correlation with the strategy, and annualised return/vol for the strategy and
+    each market, over the dates the strategy has returns."""
+    rows = []
+    for name, px in markets.items():
+        d = pd.concat([r.rename("s"), px.pct_change().rename("m")], axis=1, join="inner").dropna()
+        if len(d) < 20:
+            continue
+        rows.append({"name": name, "corr": d["s"].corr(d["m"]),
+                     "ret": (1 + d["m"]).prod() ** (_ANN_MU / len(d)) - 1, "vol": d["m"].std() * np.sqrt(_ANN_MU)})
+    st_df = pd.DataFrame(rows, columns=["name", "corr", "ret", "vol"])
+    strat = {"ret": (1 + r).prod() ** (_ANN_MU / len(r)) - 1, "vol": r.std() * np.sqrt(_ANN_MU)} if len(r) else {}
+    return st_df, strat
+
+
+def _mu_rr_layout(fig, height):
+    fig.update_layout(height=height, paper_bgcolor=PANEL, plot_bgcolor=PANEL, showlegend=False,
+                      font=dict(family=FONT, color=TXT, size=12),
+                      hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)))
+    return fig
+
+
+def _fig_correlation(st_df, height=380):
+    d = st_df.iloc[::-1]
+    fig = go.Figure(go.Bar(y=d["name"], x=d["corr"], orientation="h", width=0.55,
+                           marker=dict(color="#2A57A0", line=dict(width=0)),
+                           text=[f"{v:.2f}" for v in d["corr"]], textposition="outside", cliponaxis=False,
+                           textfont=dict(size=11, color=TXT),
+                           hovertemplate="%{y}: %{x:.2f}<extra></extra>"))
+    _mu_rr_layout(fig, height).update_layout(margin=dict(l=20, r=30, t=40, b=20))
+    fig.update_xaxes(range=[min(-0.2, d["corr"].min() - 0.1), 1.0], dtick=0.2, tickformat=".1f", side="top",
+                     gridcolor=LINE, zeroline=True, zerolinecolor=TXT, tickfont=dict(size=11, color=MUTED))
+    fig.update_yaxes(automargin=True, showgrid=False, tickfont=dict(size=12, color=TXT))
+    return fig
+
+
+def _fig_risk_return(st_df, strat, height=380):
+    fig = go.Figure(go.Scatter(x=st_df["vol"], y=st_df["ret"], mode="markers+text", text=st_df["name"],
+                               textposition="top center", textfont=dict(size=11, color=TXT),
+                               marker=dict(color="#8C8178", size=12, line=dict(color="white", width=1.5)),
+                               hovertemplate="%{text}<br>return %{y:.1%} · vol %{x:.1%}<extra></extra>"))
+    if strat:
+        fig.add_trace(go.Scatter(x=[strat["vol"]], y=[strat["ret"]], mode="markers+text", text=["<b>Strategy</b>"],
+                                 textposition="top center", textfont=dict(size=13, color="#1658A8"),
+                                 marker=dict(color="#1658A8", size=18, symbol="diamond",
+                                             line=dict(color="white", width=2)),
+                                 hovertemplate="Strategy<br>return %{y:.1%} · vol %{x:.1%}<extra></extra>"))
+    fig.add_hline(y=0, line=dict(color=TXT, width=1), opacity=0.6)
+    _mu_rr_layout(fig, height).update_layout(margin=dict(l=60, r=30, t=30, b=50))
+    fig.update_xaxes(tickformat=".0%", gridcolor=LINE, zeroline=False,
+                     title=dict(text="Annualized volatility", font=dict(size=12, color=MUTED)))
+    fig.update_yaxes(tickformat=".0%", gridcolor=LINE, zeroline=False)
+    return fig
+
+
+def _mu_rebase(s, start, end):
+    win = s[(s.index >= start) & (s.index <= end)]
+    if win.empty:
+        return None
+    pre = s[s.index < start]
+    if len(pre):
+        win = pd.concat([pd.Series([pre.iloc[-1]], index=[pre.index[-1]]), win])
+    return win / win.iloc[0] - 1
+
+
+def _mu_strategy_curve(r, start, end):
+    win = r[(r.index >= start) & (r.index <= end)]
+    if win.empty:
+        return None
+    pre = r[r.index < start]
+    anchor = pre.index[-1] if len(pre) else win.index[0] - pd.Timedelta(days=1)
+    return pd.concat([pd.Series([0.0], index=[anchor]), (1 + win).cumprod() - 1])
+
+
+def _mu_drawdown_note(fig, sc, m0):
+    eq = 1 + sc
+    dd = eq / eq.cummax() - 1
+    red = BAR_NEG
+    if dd.min() >= -1e-9:
+        text = f"No drawdown in {m0:%B}"
+    else:
+        trough = dd.idxmin()
+        peak = eq[:trough].idxmax()
+        after = eq[eq.index > trough]
+        rec = after[after >= eq[peak]].index.min() if len(after) else pd.NaT
+        n = len(eq[(eq.index > trough) & (eq.index <= (rec if pd.notna(rec) else eq.index[-1]))])
+        days = f"{n} trading day{'s' if n != 1 else ''}"
+        month_over = m0 + pd.offsets.MonthBegin(1) <= pd.Timestamp.today().normalize()
+        how = (f"recovered {rec:%b %d}, {days} after the trough" if pd.notna(rec) else
+               f"not recovered by month end ({days} after the trough)" if month_over else
+               f"not yet recovered ({days} since the trough)")
+        start = f"from the start of {m0:%B}" if peak == eq.index[0] else f"peak {peak:%b %d}"
+        text = f"<b>Max drawdown {dd.min():.2%}</b><br>{start} → trough {trough:%b %d}<br>{how}"
+        fig.add_vrect(x0=peak, x1=rec if pd.notna(rec) else eq.index[-1], fillcolor=red, opacity=0.07,
+                      line_width=0, layer="below")
+        fig.add_trace(go.Scatter(x=[trough], y=[sc[trough]], mode="markers", showlegend=False, hoverinfo="skip",
+                                 marker=dict(color=red, size=9, symbol="triangle-down",
+                                             line=dict(color="white", width=1))))
+    fig.add_annotation(x=0.01, y=0.98, xref="paper", yref="paper", xanchor="left", yanchor="top",
+                       showarrow=False, align="left", text=text,
+                       font=dict(family=MONO, size=11, color=red),
+                       bgcolor="rgba(243,234,223,0.85)", borderpad=4)
+
+
+def _fig_strategy_vs_markets_month(r, closes, m0, m_next, strat_name=STRATEGY_NAME, height=460):
+    """Strategy against the markets as % change from the start of the focus month (one shared scale)."""
+    start, end = m0, m_next - pd.Timedelta(seconds=1)
+    fig = go.Figure()
+    labels, mkt_y, str_y = [], [], [0.0]
+    for name, (s, color) in closes.items():
+        c = _mu_rebase(s, start, end)
+        if c is None:
+            continue
+        fig.add_trace(go.Scatter(x=c.index, y=c.values, name=name, mode="lines",
+                                 line=dict(color=color, width=1.3, shape="spline", smoothing=0.4),
+                                 opacity=0.42, hovertemplate="%{y:+.2%}"))
+        labels.append([c.iloc[-1], name, color, False])
+        mkt_y.extend(c.values.tolist())
+    sc = _mu_strategy_curve(r, start, end)
+    if sc is not None:
+        acc = FT_COLORS["accent"]
+        fig.add_trace(go.Scatter(x=sc.index, y=sc.values, name=strat_name, mode="lines",
+                                 line=dict(color=acc, width=3.2, dash="dash", shape="spline", smoothing=0.4),
+                                 fill="tozeroy", fillcolor="rgba(21,101,192,0.10)", hovertemplate="%{y:+.2%}"))
+        fig.add_trace(go.Scatter(x=[sc.index[-1]], y=[sc.iloc[-1]], mode="markers", showlegend=False,
+                                 hoverinfo="skip", marker=dict(color=acc, size=9, line=dict(color="white", width=2))))
+        labels.append([sc.iloc[-1], strat_name, acc, True])
+        str_y.extend(sc.values.tolist())
+        _mu_drawdown_note(fig, sc, m0)
+    lo, hi = min(str_y + mkt_y), max(str_y + mkt_y)
+    span = max(hi - lo, 0.004)
+    rng = [lo - span * 0.06, hi + span * 0.06]
+    frac = lambda v: (v - rng[0]) / (rng[1] - rng[0])
+    for lab in labels:
+        lab.append(frac(lab[0]))
+    labels.sort(key=lambda t: t[4])
+    prev = -np.inf
+    for lab in labels:
+        lab[4] = max(lab[4], prev + 0.055)
+        prev = lab[4]
+    for val, name, color, is_strat, ypos in labels:
+        txt = f"<b>{name}</b>  {val:+.1%}" if is_strat else f"{name}  {val:+.1%}"
+        fig.add_annotation(xref="paper", x=1.0, xshift=8, y=ypos, yref="paper", xanchor="left",
+                           yanchor="middle", text=txt, showarrow=False,
+                           font=dict(family=MONO, size=12 if is_strat else 11, color=color),
+                           opacity=1.0 if is_strat else 0.6, bgcolor=PANEL if is_strat else "rgba(0,0,0,0)")
+    fig.add_hline(y=0, line=dict(color=TXT, width=1, dash="dot"), opacity=0.45)
+    fig.update_layout(height=height, paper_bgcolor=PANEL, plot_bgcolor=PANEL,
+                      font=dict(family=FONT, color=TXT, size=12), margin=dict(l=70, r=235, t=46, b=40),
+                      hovermode="x unified",
+                      hoverlabel=dict(bgcolor="white", bordercolor=BORDER_FT, font=dict(family=MONO, size=11)),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                                  font=dict(family=FONT, size=12), bgcolor="rgba(0,0,0,0)"))
+    fig.update_yaxes(tickformat="+.0%" if rng[1] - rng[0] > 0.08 else "+.1%", range=rng,
+                     gridcolor=LINE, zeroline=False, showline=False, ticks="", tickfont=dict(color=TXT))
+    fig.update_xaxes(gridcolor=LINE, showline=True, linecolor=BORDER_FT, ticks="outside", tickcolor=BORDER_FT,
+                     tickformat="%b %d", rangebreaks=[dict(bounds=["sat", "mon"])])
+    return fig
+
+
+# ===========================================================================
 #  STREAMLIT UI
 # ===========================================================================
 st.set_page_config(page_title="Long Horizon Macro Strategy · Daily Review",
@@ -1040,6 +1516,29 @@ ts = trade_stats(trades)
 bystrat = by_strategy(trades)
 byac = by_asset_class(trades, marks, legs)
 
+# ---- monthly-update inputs (focus month, trade decomposition, markets) ----
+mu_r = _mu_load_returns()
+if mu_r is not None and len(mu_r):
+    _last = mu_r.index.max()
+    mu_m0 = pd.Timestamp(_last.year, _last.month, 1)
+else:
+    _today = pd.Timestamp.today().normalize()
+    mu_m0 = pd.Timestamp(_today.year, _today.month, 1)
+mu_mnext = mu_m0 + pd.offsets.MonthBegin(1)
+mu_mname = mu_m0.strftime("%B")
+try:
+    mu_legs = _mu_load_legs()
+except Exception:
+    mu_legs = None
+mu_by, mu_seg = _mu_month_class_rows(mu_legs, mu_m0, mu_mnext)
+# market price files (optional; charts degrade if absent)
+mu_markets = {n: s for n, k in MU_CORR_ASSETS.items() if (s := _mu_load_asset(k)) is not None}
+mu_closes = {lbl: (s, col) for lbl, (k, col) in MU_ASSETS.items() if (s := _mu_load_asset(k)) is not None}
+if mu_r is not None and len(mu_r):
+    mu_stats, mu_strat = _mu_market_stats(mu_r, mu_markets)
+else:
+    mu_stats, mu_strat = pd.DataFrame(), {}
+
 realized_pct = as_pct(totals["realised"])
 unreal_pct = as_pct(totals["unrealised"])
 maxdd_pct = (dd["max_dd_pct"] / 100.0) if not np.isnan(dd["max_dd_pct"]) else None
@@ -1116,11 +1615,31 @@ with right:
             st.plotly_chart(daily_ret_fig, use_container_width=True, theme=None, config=_CHART)
         section("By strategy  ·  %")
         st.plotly_chart(fig_strategy(bystrat, base_cap), use_container_width=True, theme=None, config=_CHART)
-        _mdr = month_trade_drivers(trades, marks)
-        if _mdr is not None and not _mdr.empty:
-            _mlabel = pd.Timestamp.today().strftime("%B")
-            section(f"What drove {_mlabel}'s P&L  ·  trades entered this month")
-            st.plotly_chart(fig_trade_drivers(_mdr, base_cap), use_container_width=True, theme=None, config=_CHART)
+
+# ---- row: what drove the month / traded symbols / trades & hit ratio ----
+if not mu_by.empty:
+    _mu_h = _mu_row_height(mu_by)
+    d1, d2, d3 = st.columns([1.1, 1, 0.9])
+    with d1:
+        with st.container(border=True):
+            section(f"What drove {mu_mname}'s P&L")
+            st.plotly_chart(_fig_class_share(mu_by, _mu_h - 30),
+                            use_container_width=True, theme=None, config=_CHART)
+            st.markdown(f'<div class="ddlabel">{_mu_class_share_note(mu_by)}</div>',
+                        unsafe_allow_html=True)
+    with d2:
+        with st.container(border=True):
+            section("Traded Symbols  |  PnL Contribution")
+            st.markdown(_symbols_block_html(mu_by, mu_seg, _mu_h), unsafe_allow_html=True)
+    with d3:
+        with st.container(border=True):
+            section("Trades & hit ratio")
+            st.plotly_chart(_fig_trade_hits(mu_seg, _mu_h),
+                            use_container_width=True, theme=None, config=_CHART)
+else:
+    with st.container(border=True):
+        section(f"What drove {mu_mname}'s P&L")
+        st.caption(f"No closed trades opened in {mu_m0:%B %Y}.")
 
 # ---- row: asset class / exposure / breakdown ----
 c1, c2, c3 = st.columns([1, 1, 1.2])
@@ -1143,6 +1662,33 @@ with c3:
                                       color_cols=["Realized", "Unrealized", "Net"],
                                       row_h=42, min_h=260),
                             use_container_width=True, theme=None, config=_CHART)
+
+# ---- row: strategy correlation + risk / return map ----
+if not mu_stats.empty:
+    rc1, rc2 = st.columns([1, 2])
+    with rc1:
+        with st.container(border=True):
+            section("Strategy Correlation  ·  vs each market, daily returns")
+            st.plotly_chart(_fig_correlation(mu_stats), use_container_width=True, theme=None, config=_CHART)
+    with rc2:
+        with st.container(border=True):
+            section("Risk / Return Map  ·  annualized return vs volatility  ·  ◆ = strategy")
+            st.plotly_chart(_fig_risk_return(mu_stats, mu_strat),
+                            use_container_width=True, theme=None, config=_CHART)
+elif mu_r is None or not len(mu_r):
+    pass
+else:
+    with st.container(border=True):
+        section("Strategy Correlation  ·  Risk / Return Map")
+        st.caption(f"No market price files found in `{MU_DATA_DIR}/`. Add per-market CSVs "
+                   "(e.g. es, gold, cl, dxy, us10) to show the correlation and risk/return charts.")
+
+# ---- strategy vs markets (current month) ----
+if mu_r is not None and len(mu_r):
+    with st.container(border=True):
+        section(f"Strategy vs markets  ·  {mu_mname}  ·  cumulative % change from the month's start")
+        st.plotly_chart(_fig_strategy_vs_markets_month(mu_r, mu_closes, mu_m0, mu_mnext),
+                        use_container_width=True, theme=None, config=_CHART)
 
 # ---- row: tables ----
 t1, t2 = st.columns([1.4, 1])
