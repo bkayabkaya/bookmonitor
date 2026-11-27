@@ -1155,8 +1155,11 @@ def _mu_month_class_rows(legs, m0, m_next):
     by["share"] = by["pnl"] / abs(total)
     seg["share"] = seg["pnl"] / abs(total)
     seg = seg[seg["pnl"] != 0].copy()
-    seg.attrs["ident_share"] = (x[x["trade_id"].isin(seg["trade_id"])].groupby(["asset_class", "ident"])["pnl"]
-                                .sum() / abs(total))
+    # Store as a plain dict (not a Series) — a Series in .attrs breaks pandas' .attrs
+    # comparison during a later groupby/concat ("truth value of a Series is ambiguous").
+    _ishare = (x[x["trade_id"].isin(seg["trade_id"])].groupby(["asset_class", "ident"])["pnl"]
+               .sum() / abs(total))
+    seg.attrs["ident_share"] = {k: float(v) for k, v in _ishare.items()}
     return by.sort_values("pnl", ascending=False).reset_index(drop=True), seg
 
 
@@ -1201,7 +1204,7 @@ def _fig_class_share(by, height):
 def _symbols_block_html(by, seg, height):
     """Traded symbols as chips per asset class (Identifier in capitals), each with its share
     of the month's trade P&L. Returned as an HTML string for st.markdown."""
-    shares = seg.attrs.get("ident_share", pd.Series(dtype=float))
+    shares = seg.attrs.get("ident_share", {})
     rows = []
     for i, c in enumerate(by.sort_values("share", ascending=False)["asset_class"]):
         color = ASSET_COLORS.get(c, _CLASS_FALLBACK[i % len(_CLASS_FALLBACK)])
